@@ -17,6 +17,9 @@ from ..db.models import (
 from ..core.rules_engine import RulesEngine
 from ..core.enums import EncounterStatus, EncounterMethod
 from ..auth.dependencies import get_current_player
+from ..events.websocket_manager import (
+    websocket_manager, broadcast_encounter_event, broadcast_catch_result_event, broadcast_faint_event
+)
 from .schemas import (
     EventEncounter, EventCatchResult, EventFaint, EventResponse, ProblemDetails
 )
@@ -235,6 +238,11 @@ def _process_encounter_event(db: Session, event: EventEncounter, applied_rules: 
     elif encounter_status == EncounterStatus.DUPE_SKIP:
         applied_rules.append("dupe_skip_applied")
     
+    # TODO: Broadcast encounter event to WebSocket clients
+    # Note: WebSocket broadcasting is disabled in sync context for now
+    # This would need to be implemented with a background task queue
+    # or by making the API endpoints async
+    
     return encounter.id
 
 
@@ -309,6 +317,9 @@ def _process_catch_result_event(db: Session, event: EventCatchResult, applied_ru
                 db.add(link_member)
                 applied_rules.append("soul_link_member_added")
     
+    # TODO: Broadcast catch result event to WebSocket clients
+    # Note: WebSocket broadcasting is disabled in sync context for now
+    
     return encounter.id
 
 
@@ -335,6 +346,9 @@ def _process_faint_event(db: Session, event: EventFaint, applied_rules: list) ->
         party_status.last_update = event.time
     
     applied_rules.append("pokemon_marked_fainted")
+    
+    # TODO: Broadcast faint event to WebSocket clients
+    # Note: WebSocket broadcasting is disabled in sync context for now
     
     # TODO: Implement soul link propagation (mark linked Pokemon as fainted)
     # This would require tracking which Pokemon are linked and updating

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from . import __version__
-from .api import runs, players, events, data
+from .api import runs, players, events, data, websockets
 
 # Create FastAPI app
 app = FastAPI(
@@ -30,6 +30,7 @@ app.include_router(runs.router)
 app.include_router(players.router)
 app.include_router(events.router)
 app.include_router(data.router)
+app.include_router(websockets.router)
 
 
 @app.get("/", include_in_schema=False)
