@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "mcp__Ref__ref_search_documentation",
+      "mcp__Ref__ref_read_url",
+      "Bash(mkdir:*)",
+      "Bash(python -m pytest tests/unit/test_models.py -v)",
+      "Bash(python3 -m pytest tests/unit/test_models.py -v)",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)"
+    ],
+    "deny": []
+  }
+}
