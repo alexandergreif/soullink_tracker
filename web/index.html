@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoulLink Tracker Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">
+                <span class="icon">🔗</span>
+                SoulLink Tracker
+            </h1>
+            <div class="header-info">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+                <div class="run-info" id="runInfo">
+                    <span id="runName">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Run Overview -->
+            <section class="section">
+                <h2 class="section-title">Run Overview</h2>
+                <div class="overview-grid" id="overviewGrid">
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Total Encounters</h3>
+                            <span class="card-icon">👁️</span>
+                        </div>
+                        <div class="card-value" id="totalEncounters">0</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Pokemon Caught</h3>
+                            <span class="card-icon">⚾</span>
+                        </div>
+                        <div class="card-value" id="totalCaught">0</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Active Soul Links</h3>
+                            <span class="card-icon">🔗</span>
+                        </div>
+                        <div class="card-value" id="activeSoulLinks">0</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="card-header">
+                            <h3>Fainted Pokemon</h3>
+                            <span class="card-icon">💀</span>
+                        </div>
+                        <div class="card-value" id="totalFainted">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Player Status -->
+            <section class="section">
+                <h2 class="section-title">Player Status</h2>
+                <div class="players-grid" id="playersGrid">
+                    <!-- Players will be populated dynamically -->
+                </div>
+            </section>
+
+            <!-- Recent Events -->
+            <section class="section">
+                <h2 class="section-title">Recent Events</h2>
+                <div class="events-container">
+                    <div class="events-list" id="eventsList">
+                        <!-- Events will be populated dynamically -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Soul Links -->
+            <section class="section">
+                <h2 class="section-title">Soul Links</h2>
+                <div class="soul-links-container">
+                    <div class="soul-links-grid" id="soulLinksGrid">
+                        <!-- Soul links will be populated dynamically -->
+                    </div>
+                    <div class="soul-links-empty" id="soulLinksEmpty" style="display: none;">
+                        <p>No soul links formed yet. Catch Pokemon on the same route to create soul links!</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Event Details Modal -->
+    <div class="modal" id="eventModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Event Details</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Event details will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading SoulLink data...</p>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="toast error-toast" id="errorToast">
+        <div class="toast-content">
+            <span class="toast-icon">⚠️</span>
+            <span class="toast-message" id="errorMessage"></span>
+            <button class="toast-close" id="toastClose">&times;</button>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div class="toast success-toast" id="successToast">
+        <div class="toast-content">
+            <span class="toast-icon">✅</span>
+            <span class="toast-message" id="successMessage"></span>
+            <button class="toast-close" id="successToastClose">&times;</button>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 SoulLink Tracker. Made for Pokemon HeartGold/SoulSilver randomizer runs.</p>
+        </div>
+    </footer>
+
+    <script src="js/utils.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

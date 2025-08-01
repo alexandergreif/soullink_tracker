@@ -24,7 +24,8 @@
       "Bash(python -m pytest tests/unit/test_api_data.py -v --no-cov)",
       "Bash(grep:*)",
       "Bash(sed:*)",
-      "Bash(python -m pytest tests/unit/test_api_*.py -v --no-cov)"
+      "Bash(python -m pytest tests/unit/test_api_*.py -v --no-cov)",
+      "mcp__RepoPrompt__manage_selection"
     ],
     "deny": []
   }
