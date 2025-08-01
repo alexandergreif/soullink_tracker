@@ -8,7 +8,23 @@
       "Bash(python -m pytest tests/unit/test_models.py -v)",
       "Bash(python3 -m pytest tests/unit/test_models.py -v)",
       "Bash(pip3 install:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "mcp__RepoPrompt__get_file_tree",
+      "mcp__RepoPrompt__read_file",
+      "mcp__RepoPrompt__search",
+      "mcp__RepoPrompt__file_actions",
+      "mcp__RepoPrompt__apply_edits",
+      "Bash(python -m pytest tests/unit/test_api_runs.py -v)",
+      "Bash(source:*)",
+      "Bash(python -m pytest tests/unit/test_api_events.py::TestEventsAPI::test_encounter_event_success -v --no-cov)",
+      "Bash(python -m pytest tests/unit/test_api_events.py -v --no-cov -x)",
+      "Bash(python -m pytest tests/unit/test_api_events.py::TestEventsAPI::test_event_idempotency -v --no-cov)",
+      "Bash(python -m pytest tests/unit/test_api_events.py -v --no-cov)",
+      "Bash(python -m pytest tests/unit/test_api_data.py::TestDataAPI::test_get_encounters_success -v --no-cov)",
+      "Bash(python -m pytest tests/unit/test_api_data.py -v --no-cov)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(python -m pytest tests/unit/test_api_*.py -v --no-cov)"
     ],
     "deny": []
   }
