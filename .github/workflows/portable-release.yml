@@ -125,7 +125,7 @@ jobs:
 
       - name: Build portable executable
         run: |
-          python build/build_pyinstaller.py
+          python build_simple.py
 
       - name: Test executable (Windows)
         if: matrix.platform == 'windows'

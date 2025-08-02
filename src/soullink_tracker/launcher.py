@@ -400,6 +400,10 @@ class SoulLinkLauncher:
             # Setup environment
             self.setup_environment()
             
+            # Initialize static files now that environment is set
+            from .main import init_static_files
+            init_static_files()
+            
             # Start server
             if not self.start_server(self.port):
                 print("❌ Failed to start server. Please check the logs.")

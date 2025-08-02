@@ -29,24 +29,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for web UI - now uses config system
+# Global web directory - will be set by setup_static_files()
+_web_directory = None
+
 def setup_static_files():
     """Setup static file serving with portable/dev mode detection."""
-    web_dir = get_web_directory()
+    global _web_directory
+    
+    try:
+        web_dir = get_web_directory()
+    except:
+        web_dir = None
     
     if web_dir is None:
         # Fallback to relative path for development
         web_dir = Path(__file__).parent.parent.parent / "web"
     
-    if web_dir.exists():
+    if web_dir and web_dir.exists():
         app.mount("/static", StaticFiles(directory=str(web_dir)), name="static")
+        _web_directory = web_dir
         return web_dir
     else:
         print(f"Warning: Web directory not found at {web_dir}")
         return None
 
-# Setup static files on import
-_web_directory = setup_static_files()
+# Setup static files - but make it safe for import
+def init_static_files():
+    """Initialize static files when environment is ready."""
+    return setup_static_files()
 
 # Register API routers
 app.include_router(runs.router)

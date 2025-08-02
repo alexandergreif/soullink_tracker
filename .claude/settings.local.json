@@ -33,7 +33,8 @@
       "mcp__playwright__browser_navigate",
       "WebFetch(domain:github.com)",
       "mcp__RepoPrompt__get_code_structure",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
