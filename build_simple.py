@@ -181,12 +181,20 @@ def main():
         print("[DEBUG] Building console-visible version (no --windowed flag)")
         
     # Add debug suffix to executable name if in debug mode
+    actual_exe_name = exe_name  # Track the actual executable name for validation
     if debug_mode:
         # Modify the name to include debug suffix
         for i, arg in enumerate(cmd):
             if arg == "--name":
                 cmd[i+1] = cmd[i+1] + "-debug"
                 break
+        # Update the actual executable name for validation
+        if platform.system() == "Windows":
+            actual_exe_name = "soullink-tracker-debug.exe"
+        elif platform.system() == "Darwin":
+            actual_exe_name = "SoulLink Tracker-debug"
+        else:
+            actual_exe_name = "soullink-tracker-debug"
     
     # Run PyInstaller with better error handling
     print("Running PyInstaller...")
@@ -255,8 +263,11 @@ def main():
         print(f"Error type: {type(e).__name__}")
         return 1
     
-    # Check if executable was created
-    expected_exe = dist_dir / (exe_name if platform.system() != "Darwin" else f"{exe_name}.app")
+    # Check if executable was created - use actual name that PyInstaller creates
+    if platform.system() == "Darwin":
+        expected_exe = dist_dir / f"{actual_exe_name}.app"
+    else:
+        expected_exe = dist_dir / actual_exe_name
     
     if expected_exe.exists():
         size_mb = get_size_mb(expected_exe)
