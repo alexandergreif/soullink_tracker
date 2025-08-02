@@ -14,7 +14,7 @@ import shutil
 
 def test_api_imports():
     """Test that all API modules can be imported."""
-    print("🔍 Testing API module imports...")
+    print("Testing API module imports...")
     
     # Add src to path for testing
     src_dir = Path.cwd() / "src"
@@ -36,9 +36,9 @@ def test_api_imports():
     for module in api_modules:
         try:
             __import__(module)
-            print(f"  ✅ {module}")
+            print(f"  OK {module}")
         except ImportError as e:
-            print(f"  ❌ {module}: {e}")
+            print(f"  ERROR {module}: {e}")
             failed_imports.append((module, str(e)))
         except Exception as e:
             print(f"  ⚠️ {module}: {e}")
@@ -49,13 +49,13 @@ def test_api_imports():
             print(f"  - {module}: {error}")
         return False
     
-    print("✅ All API modules imported successfully")
+    print("All API modules imported successfully")
     return True
 
 def main():
     """Simple build script that should work in GitHub Actions."""
     
-    print("🔗 SoulLink Tracker Portable - Simple Build")
+    print("SoulLink Tracker Portable - Simple Build")
     print("=" * 50)
     
     # Basic info
@@ -68,19 +68,19 @@ def main():
     
     # Check entry point exists
     if not entry_point.exists():
-        print(f"❌ Entry point not found: {entry_point}")
+        print(f"ERROR: Entry point not found: {entry_point}")
         return 1
     
     # Test API imports before building
     if not test_api_imports():
-        print("❌ API import test failed - build may not work correctly")
+        print("ERROR: API import test failed - build may not work correctly")
         # Continue anyway but warn user
     
     # Clean dist directory
     dist_dir = project_root / "dist"
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
-        print("🧹 Cleaned dist directory")
+        print("Cleaned dist directory")
     
     # Determine executable name
     exe_name = "soullink-tracker"
@@ -155,7 +155,7 @@ def main():
         cmd.extend(["--windowed"])
     
     # Run PyInstaller with better error handling
-    print("🚀 Running PyInstaller...")
+    print("Running PyInstaller...")
     print(f"Command: {' '.join(cmd[:10])}... (truncated, {len(cmd)} total args)")
     
     try:
@@ -168,15 +168,15 @@ def main():
         for imp in test_imports:
             try:
                 __import__(imp)
-                print(f"  ✅ {imp}")
+                print(f"  OK {imp}")
             except ImportError as ie:
-                print(f"  ❌ {imp}: {ie}")
+                print(f"  ERROR {imp}: {ie}")
                 return 1
 
         # Run PyInstaller
         print("\n🔨 Building executable...")
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print("✅ PyInstaller completed successfully")
+        print("PyInstaller completed successfully")
         
         # Show relevant output
         if result.stdout:
@@ -190,7 +190,7 @@ def main():
                     print(f"  {line}")
             
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ PyInstaller failed with return code: {e.returncode}")
+        print(f"\nERROR: PyInstaller failed with return code: {e.returncode}")
         
         # Show detailed error information
         if e.stdout:
@@ -217,7 +217,7 @@ def main():
         return 1
     
     except Exception as e:
-        print(f"\n❌ Unexpected error during build: {e}")
+        print(f"\nERROR: Unexpected error during build: {e}")
         print(f"Error type: {type(e).__name__}")
         return 1
     
@@ -226,11 +226,11 @@ def main():
     
     if expected_exe.exists():
         size_mb = get_size_mb(expected_exe)
-        print(f"✅ Executable created: {expected_exe}")
-        print(f"📦 Size: {size_mb} MB")
+        print(f"Executable created: {expected_exe}")
+        print(f"Size: {size_mb} MB")
         return 0
     else:
-        print(f"❌ Executable not found: {expected_exe}")
+        print(f"ERROR: Executable not found: {expected_exe}")
         print("Files in dist/:")
         if dist_dir.exists():
             for f in dist_dir.iterdir():

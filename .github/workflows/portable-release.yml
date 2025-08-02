@@ -17,28 +17,8 @@ permissions:
 
 jobs:
   build:
-    name: Build Portable Executable
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-            arch: x64
-            extension: .exe
-            runner: windows-latest
-          - os: macos-latest
-            platform: macos
-            arch: x64
-            extension: .app
-            runner: macos-latest
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            extension: ""
-            runner: ubuntu-latest
-
-    runs-on: ${{ matrix.runner }}
+    name: Build Windows Portable Executable
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -52,16 +32,6 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install system dependencies (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            libc6-dev \
-            libffi-dev \
-            libssl-dev \
-            zlib1g-dev
 
       - name: Install Python dependencies
         run: |
@@ -93,8 +63,7 @@ jobs:
           print('✅ All imports successful')
           "
 
-      - name: Create version info (Windows)
-        if: matrix.platform == 'windows'
+      - name: Create version info
         run: |
           $version = "${{ github.ref_name }}"
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
@@ -136,59 +105,17 @@ jobs:
         run: |
           python build_simple.py
 
-      - name: Test executable (Windows)
-        if: matrix.platform == 'windows'
+      - name: Test executable
         run: |
           if (Test-Path "dist/soullink-tracker.exe") {
-            Write-Host "✅ Windows executable built successfully"
+            Write-Host "Windows executable built successfully"
             $size = (Get-Item "dist/soullink-tracker.exe").Length / 1MB
-            Write-Host "📦 Size: $([math]::Round($size, 1)) MB"
+            Write-Host "Size: $([math]::Round($size, 1)) MB"
           } else {
-            Write-Error "❌ Windows executable not found"
+            Write-Error "Windows executable not found"
             exit 1
           }
 
-      - name: Test executable (macOS)
-        if: matrix.platform == 'macos'
-        run: |
-          if [ -d "dist/SoulLink Tracker.app" ]; then
-            echo "✅ macOS app bundle built successfully"
-            size=$(du -m "dist/SoulLink Tracker.app" | cut -f1)
-            echo "📦 Size: ${size} MB"
-          else
-            echo "❌ macOS app bundle not found"
-            exit 1
-          fi
-
-      - name: Test executable (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          if [ -f "dist/soullink-tracker" ]; then
-            echo "✅ Linux executable built successfully"
-            size=$(du -m "dist/soullink-tracker" | cut -f1)
-            echo "📦 Size: ${size} MB"
-            # Make sure it's executable
-            chmod +x "dist/soullink-tracker"
-          else
-            echo "❌ Linux executable not found"
-            exit 1
-          fi
-
-      - name: Create desktop file (Linux)
-        if: matrix.platform == 'linux'
-        run: |
-          mkdir -p dist/
-          cat > dist/soullink-tracker.desktop << EOF
-          [Desktop Entry]
-          Version=1.0
-          Type=Application
-          Name=SoulLink Tracker
-          Comment=Pokemon SoulLink Tracker for HeartGold/SoulSilver
-          Exec=./soullink-tracker
-          Icon=soullink-tracker
-          Terminal=false
-          Categories=Game;Utility;
-          EOF
 
       - name: Package release assets
         run: |
@@ -199,19 +126,11 @@ jobs:
           fi
           
           # Create package directory
-          PACKAGE_NAME="soullink-tracker-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
+          PACKAGE_NAME="soullink-tracker-${VERSION}-windows-x64"
           mkdir -p "packages/${PACKAGE_NAME}"
           
-          # Copy executable/app bundle
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            cp "dist/soullink-tracker.exe" "packages/${PACKAGE_NAME}/"
-          elif [ "${{ matrix.platform }}" = "macos" ]; then
-            cp -r "dist/SoulLink Tracker.app" "packages/${PACKAGE_NAME}/"
-          else
-            cp "dist/soullink-tracker" "packages/${PACKAGE_NAME}/"
-            cp "dist/soullink-tracker.desktop" "packages/${PACKAGE_NAME}/"
-            chmod +x "packages/${PACKAGE_NAME}/soullink-tracker"
-          fi
+          # Copy Windows executable
+          cp "dist/soullink-tracker.exe" "packages/${PACKAGE_NAME}/"
           
           # Copy documentation
           cp README.md "packages/${PACKAGE_NAME}/" || true
@@ -242,14 +161,9 @@ jobs:
           Enjoy your SoulLink run! 🔗
           EOF
           
-          # Create archive
+          # Create archive using PowerShell
           cd packages
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            # Use PowerShell on Windows for better zip support
-            powershell -Command "Compress-Archive -Path '${PACKAGE_NAME}' -DestinationPath '${PACKAGE_NAME}.zip'"
-          else
-            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
-          fi
+          powershell -Command "Compress-Archive -Path '${PACKAGE_NAME}' -DestinationPath '${PACKAGE_NAME}.zip'"
           cd ..
           
           echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
@@ -258,11 +172,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd packages
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            powershell -Command "Get-FileHash '${PACKAGE_NAME}.zip' -Algorithm SHA256 | Format-List Hash | Out-String" > "${PACKAGE_NAME}.zip.sha256"
-          else
-            sha256sum "${PACKAGE_NAME}.zip" > "${PACKAGE_NAME}.zip.sha256"
-          fi
+          powershell -Command "Get-FileHash '${PACKAGE_NAME}.zip' -Algorithm SHA256 | Format-List Hash | Out-String" > "${PACKAGE_NAME}.zip.sha256"
           cd ..
         shell: bash
 
@@ -319,28 +229,23 @@ jobs:
           This is the portable edition of SoulLink Tracker - no installation required!
           
           ### Features
-          - ✅ **Zero Installation** - Just download, extract, and run
-          - ✅ **Cross-Platform** - Windows, macOS, and Linux support  
-          - ✅ **Auto-Browser Launch** - Dashboard opens automatically
-          - ✅ **Built-in Setup Wizard** - Easy configuration
-          - ✅ **Embedded Resources** - All dependencies included
+          - **Zero Installation** - Just download, extract, and run
+          - **Windows Support** - Optimized for Windows 10+ (64-bit)
+          - **Auto-Browser Launch** - Dashboard opens automatically
+          - **Built-in Setup Wizard** - Easy configuration
+          - **Embedded Resources** - All dependencies included
           
-          ### Downloads
+          ### Download
           
           | Platform | Download | Size |
           |----------|----------|------|
           | Windows 10+ (64-bit) | [soullink-tracker-${VERSION}-windows-x64.zip](./soullink-tracker-${VERSION}-windows-x64.zip) | ~45MB |
-          | macOS 10.15+ (Intel/M1) | [soullink-tracker-${VERSION}-macos-x64.zip](./soullink-tracker-${VERSION}-macos-x64.zip) | ~50MB |
-          | Linux (64-bit) | [soullink-tracker-${VERSION}-linux-x64.zip](./soullink-tracker-${VERSION}-linux-x64.zip) | ~40MB |
           
           ### Quick Start
           
-          1. **Download** the appropriate package for your platform
-          2. **Extract** the ZIP file to any folder
-          3. **Run** the executable:
-             - Windows: Double-click \`soullink-tracker.exe\`
-             - macOS: Double-click \`SoulLink Tracker.app\`
-             - Linux: Run \`./soullink-tracker\` in terminal
+          1. **Download** the Windows package
+          2. **Extract** the ZIP file to any folder  
+          3. **Run** the executable: Double-click \`soullink-tracker.exe\`
           4. **Follow** the setup wizard in your browser
           
           ### Verification
@@ -350,8 +255,6 @@ jobs:
           ### System Requirements
           
           - **Windows**: Windows 10 or later (64-bit)
-          - **macOS**: macOS 10.15 (Catalina) or later
-          - **Linux**: Any modern 64-bit distribution
           - **Memory**: 512MB RAM minimum
           - **Storage**: 100MB free space
           
