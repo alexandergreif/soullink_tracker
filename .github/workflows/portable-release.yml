@@ -101,11 +101,15 @@ jobs:
           New-Item -Path "build" -ItemType Directory -Force
           $versionInfo | Out-File -FilePath "build/version_info.txt" -Encoding UTF8
 
-      - name: Build portable executable
+      - name: Build portable executable (Normal)
         run: |
           python build_simple.py
 
-      - name: Test executable
+      - name: Build portable executable (Debug - Console Visible)
+        run: |
+          python build_simple.py --debug
+
+      - name: Test executables
         run: |
           if (Test-Path "dist/soullink-tracker.exe") {
             Write-Host "Windows executable built successfully"
@@ -113,6 +117,15 @@ jobs:
             Write-Host "Size: $([math]::Round($size, 1)) MB"
           } else {
             Write-Error "Windows executable not found"
+            exit 1
+          }
+          
+          if (Test-Path "dist/soullink-tracker-debug.exe") {
+            Write-Host "Debug executable built successfully"
+            $size = (Get-Item "dist/soullink-tracker-debug.exe").Length / 1MB
+            Write-Host "Debug Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "Debug executable not found"
             exit 1
           }
 
@@ -129,8 +142,9 @@ jobs:
           PACKAGE_NAME="soullink-tracker-${VERSION}-windows-x64"
           mkdir -p "packages/${PACKAGE_NAME}"
           
-          # Copy Windows executable
+          # Copy Windows executables (both normal and debug)
           cp "dist/soullink-tracker.exe" "packages/${PACKAGE_NAME}/"
+          cp "dist/soullink-tracker-debug.exe" "packages/${PACKAGE_NAME}/"
           
           # Copy documentation
           cp README.md "packages/${PACKAGE_NAME}/" || true
@@ -144,21 +158,65 @@ jobs:
           Quick Start:
           1. Extract this package to any folder
           2. Run the executable:
-             - Windows: Double-click soullink-tracker.exe
-             - macOS: Double-click SoulLink Tracker.app  
-             - Linux: Run ./soullink-tracker in terminal
+             - Windows (Normal): Double-click soullink-tracker.exe
+             - Windows (Debug): Double-click soullink-tracker-debug.exe
           3. Your browser will open automatically
           4. Follow the setup wizard
+          
+          Troubleshooting:
+          If the normal version doesn't work:
+          1. Try the debug version (soullink-tracker-debug.exe)
+          2. Debug version shows console output for troubleshooting
+          3. Check log files created in logs/ directory
+          4. If antivirus blocks it, add to whitelist
           
           Features:
           - Zero installation required
           - Automatic browser launching  
           - Built-in setup wizard
-          - Cross-platform support
+          - Comprehensive logging for debugging
           
           For more information, see README.md
           
           Enjoy your SoulLink run!
+          EOF
+          
+          # Create troubleshooting guide for antivirus issues
+          cat > "packages/${PACKAGE_NAME}/ANTIVIRUS_TROUBLESHOOTING.txt" << EOF
+          SoulLink Tracker - Antivirus Troubleshooting Guide
+          ==================================================
+          
+          ANTIVIRUS FALSE POSITIVE ISSUE:
+          Some antivirus software may flag this executable as suspicious.
+          This is a common false positive with PyInstaller-built applications.
+          
+          WHY THIS HAPPENS:
+          - The executable contains a bundled Python interpreter
+          - It unpacks files to temporary directories during execution
+          - These behaviors can trigger heuristic virus detection
+          
+          SOLUTIONS:
+          
+          1. WHITELIST THE EXECUTABLE:
+             - Windows Defender: Add folder to exclusions in Windows Security
+             - Other antivirus: Add soullink-tracker.exe to whitelist/exceptions
+          
+          2. USE THE DEBUG VERSION:
+             - Run soullink-tracker-debug.exe instead
+             - Shows console output to verify it's working correctly
+             - Same functionality, just with visible console window
+          
+          3. TEMPORARY DISABLE (NOT RECOMMENDED):
+             - Temporarily disable real-time protection
+             - Run the application
+             - Re-enable protection afterward
+          
+          VERIFICATION:
+          - The source code is open source: https://github.com/alexandergreif/Soullink_Tracker
+          - You can build from source if preferred
+          - The debug version shows all operations transparently
+          
+          This is a legitimate application and safe to run.
           EOF
           
           # Create archive using PowerShell

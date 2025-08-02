@@ -36,7 +36,8 @@
       "Bash(rm:*)",
       "Bash(git add:*)",
       "Bash(git push:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "mcp__RepoPrompt__read_selected_files"
     ],
     "deny": []
   }

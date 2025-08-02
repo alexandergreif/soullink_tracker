@@ -169,11 +169,24 @@ def main():
         str(entry_point)
     ]
     
-    # Platform specific options
-    if platform.system() == "Windows":
-        cmd.extend(["--windowed"])
-    elif platform.system() == "Darwin":
-        cmd.extend(["--windowed"])
+    # Platform specific options - allow debug mode to show console
+    debug_mode = '--debug' in sys.argv or os.getenv('SOULLINK_BUILD_DEBUG')
+    
+    if not debug_mode:
+        if platform.system() == "Windows":
+            cmd.extend(["--windowed"])
+        elif platform.system() == "Darwin":
+            cmd.extend(["--windowed"])
+    else:
+        print("[DEBUG] Building console-visible version (no --windowed flag)")
+        
+    # Add debug suffix to executable name if in debug mode
+    if debug_mode:
+        # Modify the name to include debug suffix
+        for i, arg in enumerate(cmd):
+            if arg == "--name":
+                cmd[i+1] = cmd[i+1] + "-debug"
+                break
     
     # Run PyInstaller with better error handling
     print("Running PyInstaller...")

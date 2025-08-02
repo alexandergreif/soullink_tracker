@@ -18,6 +18,22 @@ from pathlib import Path
 from datetime import datetime
 
 
+def immediate_startup_log(message: str):
+    """Log startup messages immediately to file and console."""
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_msg = f"{timestamp} [STARTUP] {message}"
+    
+    # Print to console (visible in debug builds)
+    print(log_msg)
+    
+    # Write to immediate startup log
+    try:
+        with open("soullink_startup_immediate.log", "a", encoding="utf-8") as f:
+            f.write(log_msg + "\n")
+    except:
+        pass  # Don't fail startup if logging fails
+
+
 def emergency_error_log(error: Exception, context: str = "startup"):
     """Emergency logging when main logging system isn't available."""
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -44,7 +60,7 @@ Traceback:
 {'='*60}
 """
     
-    # Print to console
+    # Print to console (visible in debug builds)
     print(error_msg, file=sys.stderr)
     
     # Try to write to emergency log file
@@ -180,43 +196,65 @@ def run_diagnostics():
 
 def main():
     """Enhanced main entry point with comprehensive error handling."""
+    immediate_startup_log("=== SoulLink Tracker Portable Edition Starting ===")
+    immediate_startup_log("Python version: " + sys.version.split()[0])
+    immediate_startup_log("Working directory: " + os.getcwd())
+    immediate_startup_log("Script arguments: " + str(sys.argv))
+    
     try:
         # Check for debug/diagnostic mode
         debug_mode = '--debug' in sys.argv or '--diagnostics' in sys.argv
+        immediate_startup_log(f"Debug mode: {debug_mode}")
         
         if debug_mode:
+            immediate_startup_log("Running comprehensive diagnostics...")
             if not run_diagnostics():
+                immediate_startup_log("CRITICAL: Diagnostics failed - cannot continue")
                 print("\nDiagnostics failed - cannot continue")
                 return 1
         else:
             # Normal startup - quick environment setup
+            immediate_startup_log("Running normal startup sequence...")
             print("SoulLink Tracker Portable Edition")
             print("Starting up...")
             
+            immediate_startup_log("Setting up environment...")
             if not setup_environment():
+                immediate_startup_log("CRITICAL: Environment setup failed")
                 print("Environment setup failed - try running with --debug for more info")
                 return 1
             
+            immediate_startup_log("Testing critical imports...")
             if not test_critical_imports():
+                immediate_startup_log("CRITICAL: Import test failed")
                 print("Import test failed - try running with --debug for more info")
                 return 1
         
         # Initialize portable logging
+        immediate_startup_log("Initializing portable logging system...")
         try:
             from soullink_tracker.portable_logger import setup_portable_logging
             logger = setup_portable_logging(debug=debug_mode)
+            immediate_startup_log(f"Portable logging initialized: {logger.log_dir}")
             print(f"Logging initialized: {logger.log_dir}")
         except Exception as e:
+            immediate_startup_log(f"WARNING: Could not initialize logging system: {e}")
             print(f"Warning: Could not initialize logging system: {e}")
             print("Continuing without enhanced logging...")
         
         # Import and run the main launcher
+        immediate_startup_log("Importing main launcher...")
         try:
             from soullink_tracker.launcher import main as launcher_main
+            immediate_startup_log("Main launcher imported successfully")
             print("Starting SoulLink Tracker...")
-            return launcher_main()
+            immediate_startup_log("Calling launcher main function...")
+            result = launcher_main()
+            immediate_startup_log(f"Launcher completed with exit code: {result}")
+            return result
             
         except ImportError as e:
+            immediate_startup_log(f"FATAL: Could not import launcher: {e}")
             emergency_error_log(e, "launcher_import")
             print(f"\nFATAL: Could not import launcher: {e}")
             print("This indicates the application bundle is incomplete.")
@@ -224,10 +262,12 @@ def main():
             return 1
             
     except KeyboardInterrupt:
+        immediate_startup_log("Shutdown requested by user (KeyboardInterrupt)")
         print("\nShutdown requested by user")
         return 0
         
     except Exception as e:
+        immediate_startup_log(f"FATAL UNEXPECTED ERROR: {type(e).__name__}: {e}")
         emergency_error_log(e, "main_execution")
         print(f"\nFATAL UNEXPECTED ERROR: {type(e).__name__}: {e}")
         print("Check soullink_emergency.log for detailed error information.")
