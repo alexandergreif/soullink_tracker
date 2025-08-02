@@ -1,0 +1,34 @@
+name: Trigger Portable Build
+
+on:
+  push:
+    branches: [ release/portable-v2.0.0 ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write  
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Main Build
+        run: |
+          echo "This workflow will trigger the main build workflow"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "SHA: ${{ github.sha }}"
+          
+      - name: Call portable release workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'portable-release.yml',
+              ref: 'release/portable-v2.0.0',
+              inputs: {
+                version: 'v2.0.0'
+              }
+            });
