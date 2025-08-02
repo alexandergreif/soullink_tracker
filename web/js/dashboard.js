@@ -158,6 +158,11 @@ class SoulLinkDashboard {
         }
         
         try {
+            // Ensure cache arrays are always initialized
+            this.cache.players = this.cache.players || [];
+            this.cache.encounters = this.cache.encounters || [];
+            this.cache.soulLinks = this.cache.soulLinks || [];
+            
             // Load run data
             const runResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}`);
             if (!runResponse.ok) {
@@ -166,21 +171,39 @@ class SoulLinkDashboard {
             this.cache.runData = await runResponse.json();
             
             // Load players
-            const playersResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/players`);
-            if (playersResponse.ok) {
-                this.cache.players = await playersResponse.json();
+            try {
+                const playersResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/players`);
+                if (playersResponse.ok) {
+                    const playersData = await playersResponse.json();
+                    this.cache.players = Array.isArray(playersData) ? playersData : (playersData.players || []);
+                }
+            } catch (error) {
+                console.warn('Failed to load players:', error);
+                this.cache.players = [];
             }
             
             // Load recent encounters
-            const encountersResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/encounters?limit=20`);
-            if (encountersResponse.ok) {
-                this.cache.encounters = await encountersResponse.json();
+            try {
+                const encountersResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/encounters?limit=20`);
+                if (encountersResponse.ok) {
+                    const encountersData = await encountersResponse.json();
+                    this.cache.encounters = Array.isArray(encountersData) ? encountersData : (encountersData.encounters || []);
+                }
+            } catch (error) {
+                console.warn('Failed to load encounters:', error);
+                this.cache.encounters = [];
             }
             
-            // Load soul links
-            const soulLinksResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/soul-links`);
-            if (soulLinksResponse.ok) {
-                this.cache.soulLinks = await soulLinksResponse.json();
+            // Load soul links (skip if endpoint doesn't exist yet)
+            try {
+                const soulLinksResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/links`);
+                if (soulLinksResponse.ok) {
+                    const soulLinksData = await soulLinksResponse.json();
+                    this.cache.soulLinks = Array.isArray(soulLinksData) ? soulLinksData : (soulLinksData.links || []);
+                }
+            } catch (error) {
+                console.warn('Soul links endpoint not available:', error);
+                this.cache.soulLinks = [];
             }
             
             this.cache.lastUpdate = new Date();
