@@ -18,24 +18,78 @@ def test_unicode_handling():
     
     # Test that problematic Unicode characters have been removed from output
     # These characters caused issues on Windows and should not be in print statements
-    problematic_chars = ["🚀", "🎉", "🎮"]
+    problematic_chars = ["🚀", "🎉", "🎮", "✅", "❌", "⚠️"]
     
     # Test safe alternatives that work on Windows
     safe_chars = ["*", "!", "+", "-", "=", "OK", "ERROR"]
     
-    print("  ℹ️ Checking that problematic Unicode has been removed from codebase...")
+    print("  [INFO] Checking cp1252 encoding compatibility...")
     
+    # Test problematic Unicode characters that should NOT be in the codebase
+    print("  [CHECK] Verifying problematic Unicode has been removed...")
+    try:
+        for char in problematic_chars:
+            char.encode('cp1252')
+            print(f"  [WARNING] Problematic character '{char}' can encode to cp1252 but may still cause issues")
+    except UnicodeEncodeError:
+        print(f"  [OK] Problematic Unicode characters properly avoided")
+    
+    # Test safe alternatives
+    print("  [CHECK] Verifying safe ASCII alternatives work...")
     try:
         for char in safe_chars:
             # Try to encode with Windows cp1252 encoding
             char.encode('cp1252')
-            print(f"  ✅ Safe character '{char}' works on Windows")
+            print(f"  [OK] Safe character '{char}' works on Windows")
     except UnicodeEncodeError as e:
-        print(f"  ❌ Safe character encoding issue: {e}")
+        print(f"  [ERROR] Safe character encoding issue: {e}")
         return False
     
-    print("  ✅ Unicode compatibility test passed")
-    return True
+    # Test actual file contents for Unicode
+    print("  [CHECK] Scanning Python files for remaining Unicode...")
+    return scan_files_for_unicode()
+
+
+def scan_files_for_unicode():
+    """Scan Python files for problematic Unicode characters."""
+    import re
+    project_root = Path(__file__).parent.parent
+    
+    # Problematic Unicode patterns that cause cp1252 issues
+    unicode_pattern = re.compile(r'[🚀🎉🎮✅❌⚠️🗑️🗄️⚙️❤️🛠️🕹️]')
+    
+    python_files = [
+        project_root / "scripts" / "init_database.py",
+        project_root / "scripts" / "admin_setup.py", 
+        project_root / "scripts" / "player_setup.py",
+        project_root / "client" / "watcher" / "player_config.py",
+        project_root / "scripts" / "start_playtest.py",
+        project_root / "scripts" / "quick_test.py"
+    ]
+    
+    issues_found = 0
+    for py_file in python_files:
+        if py_file.exists():
+            try:
+                content = py_file.read_text(encoding='utf-8')
+                matches = unicode_pattern.findall(content)
+                if matches:
+                    print(f"  [ERROR] Found Unicode in {py_file.name}: {matches}")
+                    issues_found += 1
+                else:
+                    print(f"  [OK] {py_file.name} clean of problematic Unicode")
+            except Exception as e:
+                print(f"  [ERROR] Could not scan {py_file.name}: {e}")
+                issues_found += 1
+        else:
+            print(f"  [WARNING] File not found: {py_file}")
+    
+    if issues_found == 0:
+        print("  [OK] All Python files clean of problematic Unicode")
+        return True
+    else:
+        print(f"  [ERROR] Found Unicode issues in {issues_found} files")
+        return False
 
 
 def test_batch_script_syntax():

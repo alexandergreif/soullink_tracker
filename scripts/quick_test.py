@@ -330,7 +330,7 @@ class QuickTester:
         
         # Performance info
         total_time = max(r["timestamp"] for r in self.test_results) - min(r["timestamp"] for r in self.test_results)
-        print(f"\n⏱️  Tests completed in {total_time:.2f} seconds")
+        print(f"\n[TIME] Tests completed in {total_time:.2f} seconds")
 
 
 async def main():
