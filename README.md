@@ -2,17 +2,17 @@
 
 **Real-time tracker for 3-player Pokemon SoulLink runs in Pokemon HeartGold/SoulSilver**
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/fastapi-0.100+-green.svg)](https://fastapi.tiangolo.com)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/fastapi-0.104+-green.svg)](https://fastapi.tiangolo.com)
 [![WebSocket](https://img.shields.io/badge/websocket-realtime-orange.svg)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
-[![Test Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](https://pytest.org)
+[![Windows](https://img.shields.io/badge/windows-supported-brightgreen.svg)](https://www.microsoft.com/windows)
 
 Automatically tracks Pokemon encounters, catches, faints, and soul links across multiple players in real-time using DeSmuME Lua scripts and a centralized web dashboard.
 
 ## 🎮 What is SoulLink?
 
 **SoulLink** is a challenging Pokemon variant where 2-3 players play linked games:
-- 🔗 Pokemon caught on the same route become "soul linked"
+- 🔗 Pokemon caught on the same route become "soul linked" 
 - 💀 If one linked Pokemon faints, **all linked Pokemon must be released**
 - 🚫 **Dupes Clause**: Only first encounter of each species family counts
 - 👥 **Species Clause**: Each player can only have one of each species family
@@ -22,67 +22,79 @@ Automatically tracks Pokemon encounters, catches, faints, and soul links across 
 - 🎯 **Automatic Detection**: DeSmuME Lua scripts detect encounters, catches, faints in real-time
 - ⚡ **Real-time Updates**: WebSocket-based live dashboard for all players
 - 🔗 **SoulLink Rules**: Automatically enforces dupes clause, species clause, soul link creation
-- 🎣 **Full Encounter Support**: Grass, water, fishing, headbutt, rock smash encounters
+- 🎣 **Full Encounter Support**: Grass, water, fishing, headbutt, rock smash encounters  
 - 🌟 **Shiny Detection**: Automatically flags shiny Pokemon
 - 📊 **Web Dashboard**: Beautiful real-time monitoring interface
 - 🔒 **Secure**: JWT authentication per player
-- 🏠 **Easy Setup**: Automated setup scripts for quick start
+- 🪟 **Windows Friendly**: One-click setup for non-technical users
 
 ## 🚀 Quick Start
 
-### For Admins (Setting up the server)
+### 🪟 Windows Users (Recommended)
 
-**👑 If you're hosting the SoulLink run:**
+**Most users should use this method - no technical knowledge required!**
 
-1. **Download and run automated setup**:
-   ```bash
-   git clone https://github.com/your-repo/SoulLink_Tracker.git
-   cd SoulLink_Tracker
-   pip install -r requirements.txt
-   python scripts/start_playtest.py
-   ```
+1. **Download this project**:
+   - Click the green "Code" button above → "Download ZIP"
+   - Extract the ZIP file to your Desktop
 
-2. **Follow the comprehensive guide**: [**ADMIN_SETUP.md**](ADMIN_SETUP.md)
+2. **For Server Host (Admin)**:
+   - Double-click `windows_installer.bat` (installs Python automatically)
+   - Double-click `run_admin_setup.bat` (starts the server)
+   - Follow the [Windows Setup Guide →](WINDOWS_SETUP.md)
 
-### For Players (Joining a run)
+3. **For Players**:
+   - Get your setup package from the admin
+   - Double-click `windows_installer.bat` (if needed)
+   - Double-click `run_player_setup.bat` (connects to server)
+   - Follow the [Windows Setup Guide →](WINDOWS_SETUP.md)
 
-**🎮 If you're a player joining someone else's SoulLink:**
+### 🐧 Linux/Mac Users
 
-1. **Get your player info** from the admin (name, token, server address)
-2. **Follow the player guide**: [**PLAYER_SETUP.md**](PLAYER_SETUP.md)
+**For technical users comfortable with command line:**
+
+```bash
+# Clone repository
+git clone https://github.com/alexandergreif/Soullink_Tracker.git
+cd Soullink_Tracker
+
+# For Admin (server host)
+python3 scripts/admin_setup.py --production
+
+# For Players  
+python3 scripts/player_setup.py player_config.json
+```
+
+## 📖 Documentation
+
+### 📋 Setup Guides
+- 🪟 **[Windows Setup Guide](WINDOWS_SETUP.md)** - For Windows users (recommended)
+- 🐧 **[Advanced Setup](scripts/)** - For technical users with Python experience
+
+### 📚 Project Information
+- 🔧 **[Developer Context](CLAUDE.md)** - Technical details and architecture
+- 📁 **[Client Files](client/)** - DeSmuME Lua scripts and Python watchers
+- 🌐 **[Web Dashboard](web/)** - Real-time monitoring interface
 
 ## 📋 What You Need
 
-### System Requirements
+### For Everyone
+- 🎮 **DeSmuME** emulator (download separately from [desmume.org](https://desmume.org))
+- 📀 **Pokemon HeartGold/SoulSilver ROM**
+- 🌐 **Internet connection**
 
-- 🐍 **Python 3.9+** 
-- 🎮 **DeSmuME** (0.9.11+ with Lua support)
-- 📀 **Pokemon HeartGold/SoulSilver ROM** (preferably randomized)
-- 🌐 **Internet connection** (for multi-player setups)
+### Windows Users
+- 🪟 **Windows 10 or 11**
+- **No Python knowledge required** - everything is automated!
 
-### For Players
-
-- **Just your computer** with DeSmuME and Python
-- **Configuration files** from your admin
-- **5 minutes** to set up
-
-### For Admins  
-
-- **One computer** to run the central server
-- **Network setup** (port forwarding or tunneling for remote players)
-- **10 minutes** to set up everything
+### Linux/Mac Users  
+- 🐍 **Python 3.8+**
+- Basic command line knowledge
 
 ## 🎯 How It Works
 
-```mermaid
-graph LR
-    A[Pokemon Game in DeSmuME] --> B[Lua Script]
-    B --> C[JSON Event Files]
-    C --> D[Python Watcher]
-    D --> E[FastAPI Server]
-    E --> F[WebSocket]
-    F --> G[Web Dashboard]
-    E --> H[Database]
+```
+🎮 Pokemon Game → 📝 Lua Script → 🔄 Python Watcher → 🌐 Web Server → 📊 Dashboard
 ```
 
 1. **🎮 Play Pokemon** normally in DeSmuME
@@ -91,197 +103,80 @@ graph LR
 4. **⚡ Web dashboard** updates in real-time for all players
 5. **🔗 Soul links** form automatically when players catch on same route
 
-## 🌟 Screenshots
-
-### Real-time Web Dashboard
-- 📊 Run statistics (encounters, catches, faints, soul links)
-- 👥 Player status and party information
-- 📅 Live event feed with timestamps  
-- 🔗 Soul link visualization
-- ⚡ Real-time WebSocket updates
-
-### DeSmuME Integration
-- 🎯 Automatic encounter detection in all locations
-- 🎣 Fishing, surfing, headbutt, rock smash support
-- ✨ Shiny Pokemon detection
-- 📍 Route and location tracking
-
-## 📖 Documentation
-
-### Setup Guides
-- 🔧 [**Admin Setup Guide**](ADMIN_SETUP.md) - For hosting the server
-- 🎮 [**Player Setup Guide**](PLAYER_SETUP.md) - For joining a run
-- 🎯 [**Complete Playtest Guide**](PLAYTEST_GUIDE.md) - Comprehensive reference
-
-### Technical Documentation
-- 🏗️ [Architecture Overview](docs/ARCHITECTURE.md) (Coming soon)
-- 📚 [API Reference](docs/API.md) (Auto-generated at `/docs`)
-- 🧪 [Testing Guide](docs/TESTING.md) (Coming soon)
-- 🚀 [Deployment Guide](docs/DEPLOYMENT.md) (Coming soon)
-
-## 🛠️ Development
-
-### Quick Development Setup
-
-```bash
-# Clone repository
-git clone https://github.com/your-repo/SoulLink_Tracker.git
-cd SoulLink_Tracker
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -r client/watcher/requirements.txt
-
-# Initialize database
-python scripts/init_database.py
-
-# Start development server
-uvicorn src.soullink_tracker.main:app --reload --host 127.0.0.1 --port 9000
-
-# Run tests
-python scripts/quick_test.py
-```
-
-### Project Structure
+## 🛠️ Project Structure
 
 ```
 SoulLink_Tracker/
-├── src/soullink_tracker/           # Main application
-│   ├── api/                        # FastAPI endpoints
-│   ├── auth/                       # JWT authentication
-│   ├── core/                       # Business logic & rules
-│   ├── db/                         # Database models
-│   └── events/                     # WebSocket handling
-├── client/                         # Client components
-│   ├── lua/                        # DeSmuME Lua scripts
-│   └── watcher/                    # Python event watchers
-├── web/                           # Web dashboard
-├── scripts/                       # Utility scripts
-├── tests/                         # Test suite (115 tests)
-└── data/                          # Reference data
+├── windows_installer.bat          # 🪟 One-click Windows installer
+├── run_admin_setup.bat            # 🔧 Admin server launcher  
+├── run_player_setup.bat           # 🎮 Player client launcher
+├── WINDOWS_SETUP.md               # 📖 Windows user guide
+├── scripts/                       # 🐍 Python setup scripts
+├── client/                        # 📱 Client components
+│   ├── lua/                       # 🎮 DeSmuME Lua scripts
+│   └── watcher/                   # 🔄 Python event watchers
+├── web/                           # 🌐 Web dashboard
+└── src/                           # ⚙️ Main application
 ```
-
-### Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-
-# Health check
-python scripts/health_check.py
-
-# Quick functional test
-python scripts/quick_test.py
-```
-
-### Development Philosophy
-
-This project follows **Test-Driven Development (TDD)**:
-- ✅ **115 unit tests** with 85.4% coverage
-- ✅ **Integration tests** for API endpoints
-- ✅ **End-to-end workflow testing**
-- ✅ **Automated health checks**
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to help:
-
-1. **🍴 Fork the repository**
-2. **🌿 Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **✅ Write tests first** (TDD approach)
-4. **💻 Implement your feature**
-5. **🧪 Ensure all tests pass** (`pytest`)
-6. **📝 Update documentation** if needed
-7. **🚀 Submit a pull request**
-
-### Code Style
-
-- **Python**: Follow PEP 8, use type hints
-- **JavaScript**: ES6+, consistent formatting
-- **Tests**: Descriptive names, good coverage
-- **Commits**: Clear, descriptive messages
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Windows Issues
+- **"Python not found"**: Run `windows_installer.bat` first
+- **"Can't connect"**: Check that admin's server is running
+- **"Script not working"**: Make sure you loaded the correct `.lua` file
 
-**"Lua script not working"**
-- ✅ Ensure DeSmuME has Lua support
-- ✅ Check ROM region matches config
-- ✅ Verify output directory exists
-
-**"Can't connect to server"**
-- ✅ Check server is running: `curl http://SERVER:9000/health`
-- ✅ Verify firewall/network settings
-- ✅ Test with: `python scripts/health_check.py`
-
-**"Events not appearing"**
-- ✅ Check authentication token
-- ✅ Verify player configuration
-- ✅ Look at watcher logs for errors
+### General Issues
+- **Events not appearing**: Check both DeSmuME and watcher are running
+- **Dashboard not updating**: Verify internet connection and server status
+- **Need help**: Check the logs folder or contact your admin
 
 ### Getting Help
 
-1. **📖 Check the setup guides** ([Admin](ADMIN_SETUP.md) | [Player](PLAYER_SETUP.md))
-2. **🔍 Run diagnostics**: `python scripts/health_check.py`
-3. **🧪 Test functionality**: `python scripts/quick_test.py`
-4. **❓ Open an issue** with error details and system info
+1. **📖 Read the setup guide**: [Windows Setup Guide](WINDOWS_SETUP.md)
+2. **📁 Check logs folder** for error details
+3. **📧 Contact your admin** for troubleshooting help
+4. **🐛 Open an issue** on GitHub with error details
 
 ## 🎉 Success Stories
 
-*"The real-time dashboard made our 3-player SoulLink run so much more engaging! Seeing soul links form instantly was amazing."* - Beta tester
+*"The one-click Windows installer made this so easy! We were playing within 10 minutes."* - Windows user
 
-*"Setup was surprisingly easy. The automated script just worked, and we were playing within 10 minutes."* - Admin feedback
+*"Real-time dashboard made our 3-player SoulLink run incredibly engaging!"* - SoulLink group
 
-*"Having automatic rule enforcement meant we could focus on playing instead of tracking spreadsheets."* - Player feedback
+*"No more spreadsheet tracking - everything just works automatically."* - Player feedback
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (v1.0)
-- Real-time encounter/catch/faint detection
-- Web dashboard with live updates
-- SoulLink rules enforcement
-- JWT authentication system
-- Comprehensive test suite
+### ✅ Completed
+- ✅ Real-time encounter/catch/faint detection
+- ✅ Web dashboard with live updates  
+- ✅ SoulLink rules enforcement
+- ✅ Windows-friendly one-click setup
+- ✅ Comprehensive test suite
 
-### 🔄 In Progress (v1.1)
-- Mobile-responsive dashboard improvements
-- Enhanced error recovery
-- Performance optimizations
-
-### 📋 Planned (v2.0)
-- Support for other Pokemon games
-- Advanced statistics and analytics
-- Discord bot integration
-- Cloud deployment templates
+### 🔄 Planned
+- 📱 Mobile-responsive dashboard improvements
+- 🎮 Support for other Pokemon games
+- 📊 Advanced statistics and analytics
+- 🤖 Discord bot integration
 
 ## 📜 License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
-
-- **Pokemon HeartGold/SoulSilver** by Game Freak
-- **DeSmuME** emulator team for Lua support
-- **FastAPI** and **WebSocket** communities
-- **SoulLink variant** creators and community
-- **Beta testers** and contributors
-
 ---
 
 ## 🎮 Ready to Start Your SoulLink Adventure?
 
-### For Admins
-👑 **[Start Here: Admin Setup Guide →](ADMIN_SETUP.md)**
+### 🪟 Windows Users (Most People)
+**[👉 Start Here: Windows Setup Guide](WINDOWS_SETUP.md)**
 
-### For Players  
-🎮 **[Start Here: Player Setup Guide →](PLAYER_SETUP.md)**
+### 🐧 Technical Users (Linux/Mac)
+**[👉 Advanced Setup Scripts](scripts/)**
 
-### Need Help?
-📚 **[Complete Playtest Guide →](PLAYTEST_GUIDE.md)**
+### ❓ Need Help?
+**[👉 Troubleshooting & Support](WINDOWS_SETUP.md#troubleshooting)**
 
 ---
 
