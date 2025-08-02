@@ -66,12 +66,21 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install pyinstaller>=6.0.0
           pip install -r requirements.txt
 
       - name: Install optional dependencies for system tray
         run: |
           pip install pillow pystray || true
+
+      - name: Verify dependency installation
+        run: |
+          echo "Checking critical dependencies..."
+          python -c "import fastapi; print(f'FastAPI: {fastapi.__version__}')"
+          python -c "import uvicorn; print(f'Uvicorn: {uvicorn.__version__}')"
+          python -c "import sqlalchemy; print(f'SQLAlchemy: {sqlalchemy.__version__}')"
+          python -c "import PyInstaller; print(f'PyInstaller: {PyInstaller.__version__}')"
+          echo "All critical dependencies verified ✅"
 
       - name: Test basic imports
         run: |
