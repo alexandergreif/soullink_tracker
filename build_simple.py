@@ -91,14 +91,35 @@ def main():
     
     print(f"Target executable: {exe_name}")
     
-    # Build command with comprehensive hidden imports
+    # Build command with comprehensive hidden imports and source code bundling
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--name", exe_name.replace(".exe", ""),  # Remove .exe for PyInstaller
+        # Bundle source code - CRITICAL FIX
+        "--paths", "src",  # Add src to Python module search path
+        "--collect-submodules", "soullink_tracker",  # Bundle entire soullink_tracker package
+        # Bundle static files
         "--add-data", "web:web",
         "--add-data", "client:client", 
         "--add-data", "data:data",
+        # Our application modules - explicit imports
+        "--hidden-import", "soullink_tracker.main",
+        "--hidden-import", "soullink_tracker.launcher",
+        "--hidden-import", "soullink_tracker.config",
+        "--hidden-import", "soullink_tracker.api.runs",
+        "--hidden-import", "soullink_tracker.api.players",
+        "--hidden-import", "soullink_tracker.api.events",
+        "--hidden-import", "soullink_tracker.api.data",
+        "--hidden-import", "soullink_tracker.api.websockets",
+        "--hidden-import", "soullink_tracker.core.rules",
+        "--hidden-import", "soullink_tracker.core.encounter_engine",
+        "--hidden-import", "soullink_tracker.db.models",
+        "--hidden-import", "soullink_tracker.db.connection",
+        "--hidden-import", "soullink_tracker.events.websocket_manager",
+        "--hidden-import", "soullink_tracker.events.event_processor",
+        "--hidden-import", "soullink_tracker.auth.token_manager",
+        "--hidden-import", "soullink_tracker.utils.data_loader",
         # Core FastAPI and Uvicorn imports
         "--hidden-import", "uvicorn",
         "--hidden-import", "uvicorn.lifespan.on",

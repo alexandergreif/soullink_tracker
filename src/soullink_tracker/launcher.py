@@ -216,6 +216,11 @@ class SoulLinkLauncher:
         
     def setup_logging(self):
         """Setup logging configuration."""
+        # Check if portable logging is already set up
+        if hasattr(logging.getLogger(), '_portable_logging_setup'):
+            logging.info("Portable logging already configured, skipping basic setup")
+            return
+            
         log_level = logging.INFO
         if os.getenv('SOULLINK_DEBUG'):
             log_level = logging.DEBUG
@@ -243,17 +248,33 @@ class SoulLinkLauncher:
     def check_dependencies(self) -> bool:
         """Check if all required resources are available."""
         try:
+            logging.info("=== RESOURCE DEPENDENCY CHECK ===")
+            
             # Check if web directory exists
             web_dir = self.resource_manager.get_web_directory()
             if not web_dir.exists():
                 logging.error(f"Web directory not found: {web_dir}")
                 return False
+            else:
+                logging.info(f"Web directory found: {web_dir}")
                 
             # Check if main web files exist
             index_file = web_dir / "index.html"
             if not index_file.exists():
                 logging.error(f"Web index file not found: {index_file}")
                 return False
+            else:
+                size = index_file.stat().st_size
+                logging.info(f"Web index file found: {index_file} ({size} bytes)")
+                
+            # Check for other critical web files
+            critical_web_files = ["static/css", "static/js", "static/img"]
+            for web_path in critical_web_files:
+                full_path = web_dir / web_path
+                if full_path.exists():
+                    logging.info(f"Web resource found: {full_path}")
+                else:
+                    logging.warning(f"Web resource missing: {full_path}")
                 
             # Check data files
             data_dir = self.resource_manager.get_data_files_directory()
@@ -262,13 +283,36 @@ class SoulLinkLauncher:
             
             if not species_file.exists():
                 logging.warning(f"Species data file not found: {species_file}")
+            else:
+                size = species_file.stat().st_size
+                logging.info(f"Species data file found: {species_file} ({size} bytes)")
+                
             if not routes_file.exists():
                 logging.warning(f"Routes data file not found: {routes_file}")
+            else:
+                size = routes_file.stat().st_size
+                logging.info(f"Routes data file found: {routes_file} ({size} bytes)")
                 
+            # Check lua scripts directory
+            lua_dir = self.resource_manager.get_lua_directory()
+            if lua_dir.exists():
+                lua_files = list(lua_dir.glob("*.lua"))
+                logging.info(f"Lua directory found: {lua_dir} ({len(lua_files)} .lua files)")
+            else:
+                logging.warning(f"Lua directory not found: {lua_dir}")
+                
+            # Log resource manager environment
+            logging.info(f"Resource Manager Environment:")
+            logging.info(f"  - Is Bundled: {self.resource_manager.is_bundled}")
+            logging.info(f"  - App Directory: {self.resource_manager.app_dir}")
+            logging.info(f"  - Data Directory: {self.resource_manager.data_dir}")
+                
+            logging.info("Resource dependency check completed successfully")
             return True
             
         except Exception as e:
             logging.error(f"Dependency check failed: {e}")
+            logging.error(f"Exception details: {repr(e)}")
             return False
             
     def find_available_port(self) -> Optional[int]:
