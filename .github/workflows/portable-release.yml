@@ -1,0 +1,376 @@
+name: Build and Release Portable SoulLink Tracker
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v2.0.0)'
+        required: true
+        default: 'v2.0.0'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build Portable Executable
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            extension: .exe
+            runner: windows-latest
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            extension: .app
+            runner: macos-latest
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            extension: ""
+            runner: ubuntu-latest
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libc6-dev \
+            libffi-dev \
+            libssl-dev \
+            zlib1g-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt || pip install -e .
+
+      - name: Install optional dependencies for system tray
+        run: |
+          pip install pillow pystray || true
+
+      - name: Run tests
+        run: |
+          python test_portable.py
+
+      - name: Create version info (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          $version = "${{ github.ref_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          }
+          $versionInfo = @"
+          VSVersionInfo(
+            ffi=FixedFileInfo(
+              filevers=(2,0,0,0),
+              prodvers=(2,0,0,0),
+              mask=0x3f,
+              flags=0x0,
+              OS=0x40004,
+              fileType=0x1,
+              subtype=0x0,
+              date=(0, 0)
+            ),
+            kids=[
+              StringFileInfo([
+                StringTable('040904B0', [
+                  StringStruct('CompanyName', 'SoulLink Tracker'),
+                  StringStruct('FileDescription', 'Pokemon SoulLink Tracker'),
+                  StringStruct('FileVersion', '$version'),
+                  StringStruct('InternalName', 'soullink-tracker'),
+                  StringStruct('LegalCopyright', 'MIT License'),
+                  StringStruct('OriginalFilename', 'soullink-tracker.exe'),
+                  StringStruct('ProductName', 'SoulLink Tracker Portable'),
+                  StringStruct('ProductVersion', '$version'),
+                ])
+              ]),
+              VarFileInfo([VarStruct('Translation', [1033, 1200])])
+            ]
+          )
+          "@
+          New-Item -Path "build" -ItemType Directory -Force
+          $versionInfo | Out-File -FilePath "build/version_info.txt" -Encoding UTF8
+
+      - name: Build portable executable
+        run: |
+          python build/build_pyinstaller.py
+
+      - name: Test executable (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          if (Test-Path "dist/soullink-tracker.exe") {
+            Write-Host "✅ Windows executable built successfully"
+            $size = (Get-Item "dist/soullink-tracker.exe").Length / 1MB
+            Write-Host "📦 Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "❌ Windows executable not found"
+            exit 1
+          }
+
+      - name: Test executable (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          if [ -d "dist/SoulLink Tracker.app" ]; then
+            echo "✅ macOS app bundle built successfully"
+            size=$(du -m "dist/SoulLink Tracker.app" | cut -f1)
+            echo "📦 Size: ${size} MB"
+          else
+            echo "❌ macOS app bundle not found"
+            exit 1
+          fi
+
+      - name: Test executable (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          if [ -f "dist/soullink-tracker" ]; then
+            echo "✅ Linux executable built successfully"
+            size=$(du -m "dist/soullink-tracker" | cut -f1)
+            echo "📦 Size: ${size} MB"
+            # Make sure it's executable
+            chmod +x "dist/soullink-tracker"
+          else
+            echo "❌ Linux executable not found"
+            exit 1
+          fi
+
+      - name: Create desktop file (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p dist/
+          cat > dist/soullink-tracker.desktop << EOF
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=SoulLink Tracker
+          Comment=Pokemon SoulLink Tracker for HeartGold/SoulSilver
+          Exec=./soullink-tracker
+          Icon=soullink-tracker
+          Terminal=false
+          Categories=Game;Utility;
+          EOF
+
+      - name: Package release assets
+        run: |
+          # Determine version
+          VERSION="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          
+          # Create package directory
+          PACKAGE_NAME="soullink-tracker-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "packages/${PACKAGE_NAME}"
+          
+          # Copy executable/app bundle
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            cp "dist/soullink-tracker.exe" "packages/${PACKAGE_NAME}/"
+          elif [ "${{ matrix.platform }}" = "macos" ]; then
+            cp -r "dist/SoulLink Tracker.app" "packages/${PACKAGE_NAME}/"
+          else
+            cp "dist/soullink-tracker" "packages/${PACKAGE_NAME}/"
+            cp "dist/soullink-tracker.desktop" "packages/${PACKAGE_NAME}/"
+            chmod +x "packages/${PACKAGE_NAME}/soullink-tracker"
+          fi
+          
+          # Copy documentation
+          cp README.md "packages/${PACKAGE_NAME}/" || true
+          cp LICENSE "packages/${PACKAGE_NAME}/" || true
+          
+          # Create quick start guide
+          cat > "packages/${PACKAGE_NAME}/QUICK_START.txt" << EOF
+          SoulLink Tracker Portable Edition ${VERSION}
+          ================================================
+          
+          Quick Start:
+          1. Extract this package to any folder
+          2. Run the executable:
+             - Windows: Double-click soullink-tracker.exe
+             - macOS: Double-click SoulLink Tracker.app  
+             - Linux: Run ./soullink-tracker in terminal
+          3. Your browser will open automatically
+          4. Follow the setup wizard
+          
+          Features:
+          - Zero installation required
+          - Automatic browser launching  
+          - Built-in setup wizard
+          - Cross-platform support
+          
+          For more information, see README.md
+          
+          Enjoy your SoulLink run! 🔗
+          EOF
+          
+          # Create archive
+          cd packages
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            # Use PowerShell on Windows for better zip support
+            powershell -Command "Compress-Archive -Path '${PACKAGE_NAME}' -DestinationPath '${PACKAGE_NAME}.zip'"
+          else
+            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
+          fi
+          cd ..
+          
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Generate checksums
+        run: |
+          cd packages
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            powershell -Command "Get-FileHash '${PACKAGE_NAME}.zip' -Algorithm SHA256 | Format-List Hash | Out-String" > "${PACKAGE_NAME}.zip.sha256"
+          else
+            sha256sum "${PACKAGE_NAME}.zip" > "${PACKAGE_NAME}.zip.sha256"
+          fi
+          cd ..
+        shell: bash
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: packages/${{ env.PACKAGE_NAME }}.zip
+          retention-days: 30
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}-checksum
+          path: packages/${{ env.PACKAGE_NAME }}.zip.sha256
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Organize release assets
+        run: |
+          mkdir -p final-release
+          find release-assets -name "*.zip" -exec cp {} final-release/ \;
+          find release-assets -name "*.sha256" -exec cp {} final-release/ \;
+          
+          echo "Release assets:"
+          ls -la final-release/
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          
+          cat > RELEASE_NOTES.md << EOF
+          # SoulLink Tracker Portable Edition ${VERSION}
+          
+          ## 🚀 What's New
+          
+          This is the portable edition of SoulLink Tracker - no installation required!
+          
+          ### Features
+          - ✅ **Zero Installation** - Just download, extract, and run
+          - ✅ **Cross-Platform** - Windows, macOS, and Linux support  
+          - ✅ **Auto-Browser Launch** - Dashboard opens automatically
+          - ✅ **Built-in Setup Wizard** - Easy configuration
+          - ✅ **Embedded Resources** - All dependencies included
+          
+          ### Downloads
+          
+          | Platform | Download | Size |
+          |----------|----------|------|
+          | Windows 10+ (64-bit) | [soullink-tracker-${VERSION}-windows-x64.zip](./soullink-tracker-${VERSION}-windows-x64.zip) | ~45MB |
+          | macOS 10.15+ (Intel/M1) | [soullink-tracker-${VERSION}-macos-x64.zip](./soullink-tracker-${VERSION}-macos-x64.zip) | ~50MB |
+          | Linux (64-bit) | [soullink-tracker-${VERSION}-linux-x64.zip](./soullink-tracker-${VERSION}-linux-x64.zip) | ~40MB |
+          
+          ### Quick Start
+          
+          1. **Download** the appropriate package for your platform
+          2. **Extract** the ZIP file to any folder
+          3. **Run** the executable:
+             - Windows: Double-click \`soullink-tracker.exe\`
+             - macOS: Double-click \`SoulLink Tracker.app\`
+             - Linux: Run \`./soullink-tracker\` in terminal
+          4. **Follow** the setup wizard in your browser
+          
+          ### Verification
+          
+          SHA256 checksums are provided for each download to verify file integrity.
+          
+          ### System Requirements
+          
+          - **Windows**: Windows 10 or later (64-bit)
+          - **macOS**: macOS 10.15 (Catalina) or later
+          - **Linux**: Any modern 64-bit distribution
+          - **Memory**: 512MB RAM minimum
+          - **Storage**: 100MB free space
+          
+          ### Support
+          
+          - 📖 [Documentation](https://github.com/alex/soullink-tracker)
+          - 🐛 [Report Issues](https://github.com/alex/soullink-tracker/issues)
+          - 💬 [Discussions](https://github.com/alex/soullink-tracker/discussions)
+          
+          ---
+          
+          **Note**: This portable version includes all the functionality of the regular SoulLink Tracker but with dramatically simplified setup. If you prefer the traditional installation method, see the [installation guide](README.md).
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+          name: SoulLink Tracker Portable ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: final-release/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notification:
+    name: Post-Release Notification
+    needs: release
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Success notification
+        run: |
+          echo "🎉 SoulLink Tracker Portable Edition released successfully!"
+          echo "📦 Release: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          echo "🔗 Check: https://github.com/${{ github.repository }}/releases"

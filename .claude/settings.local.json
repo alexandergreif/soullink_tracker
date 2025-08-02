@@ -25,7 +25,15 @@
       "Bash(grep:*)",
       "Bash(sed:*)",
       "Bash(python -m pytest tests/unit/test_api_*.py -v --no-cov)",
-      "mcp__RepoPrompt__manage_selection"
+      "mcp__RepoPrompt__manage_selection",
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "mcp__playwright__browser_navigate",
+      "WebFetch(domain:github.com)",
+      "mcp__RepoPrompt__get_code_structure",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

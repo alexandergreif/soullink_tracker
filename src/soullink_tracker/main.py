@@ -4,11 +4,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .api import runs, players, events, data, websockets
+from .config import get_config, get_web_directory
 
 # Create FastAPI app
 app = FastAPI(
@@ -28,10 +29,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for web UI
-web_dir = Path(__file__).parent.parent.parent / "web"
-if web_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(web_dir)), name="static")
+# Mount static files for web UI - now uses config system
+def setup_static_files():
+    """Setup static file serving with portable/dev mode detection."""
+    web_dir = get_web_directory()
+    
+    if web_dir is None:
+        # Fallback to relative path for development
+        web_dir = Path(__file__).parent.parent.parent / "web"
+    
+    if web_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(web_dir)), name="static")
+        return web_dir
+    else:
+        print(f"Warning: Web directory not found at {web_dir}")
+        return None
+
+# Setup static files on import
+_web_directory = setup_static_files()
 
 # Register API routers
 app.include_router(runs.router)
@@ -44,19 +59,20 @@ app.include_router(websockets.router)
 @app.get("/", include_in_schema=False)
 async def root():
     """Serve web dashboard or redirect to API docs if web files not found."""
-    web_index = web_dir / "index.html"
-    if web_index.exists():
-        return RedirectResponse(url="/dashboard")
+    if _web_directory:
+        web_index = _web_directory / "index.html"
+        if web_index.exists():
+            return RedirectResponse(url="/dashboard")
     return RedirectResponse(url="/docs")
 
 
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard(request: Request):
     """Serve the web dashboard."""
-    web_index = web_dir / "index.html"
-    if web_index.exists():
-        from fastapi.responses import FileResponse
-        return FileResponse(str(web_index))
+    if _web_directory:
+        web_index = _web_directory / "index.html"
+        if web_index.exists():
+            return FileResponse(str(web_index))
     return RedirectResponse(url="/docs")
 
 
