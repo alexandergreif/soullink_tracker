@@ -199,7 +199,7 @@ def create_sample_run(session):
 
 def main():
     """Main initialization function."""
-    print("🚀 Initializing SoulLink Tracker Database")
+    print("Initializing SoulLink Tracker Database")
     print("=" * 50)
     
     # Paths
@@ -224,7 +224,7 @@ def main():
         session.commit()
     
     print("\n" + "=" * 50)
-    print("🎉 Database initialization complete!")
+    print("Database initialization complete!")
     print(f"   Species loaded: {species_count}")
     print(f"   Routes loaded: {routes_count}")
     print(f"   Sample run created: {sample_run['run_name']}")
@@ -236,7 +236,7 @@ def main():
         json.dump(sample_run, f, indent=2)
     
     print(f"   Configuration saved to: {config_file}")
-    print("\n🎮 Ready for testing!")
+    print("\nReady for testing!")
     print("\nNext steps:")
     print("1. Start the FastAPI server: uvicorn src.soullink_tracker.main:app --host 127.0.0.1 --port 9000")
     print("2. Test API health: curl http://127.0.0.1:9000/health")

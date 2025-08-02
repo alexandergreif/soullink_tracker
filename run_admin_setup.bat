@@ -71,6 +71,7 @@ if "!CHOICE!" == "1" (
         python scripts\admin_setup.py --reset --production
     ) else (
         echo Reset cancelled.
+        goto :end
     )
 ) else (
     echo Invalid choice. Please run this setup again and choose 1, 2, or 3.

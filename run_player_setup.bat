@@ -47,7 +47,7 @@ set CONFIG_FILE=
 REM Check for config files in current directory
 for %%f in (*.json) do (
     findstr /i "player_id\|server_url\|bearer_token" "%%f" >nul 2>&1
-    if !errorlevel! equ 0 (
+    if not errorlevel 1 (
         set CONFIG_FILE=%%f
         echo Found configuration file: %%f
         goto :found_config
@@ -85,6 +85,7 @@ if defined CONFIG_FILE (
         echo   2. Copy it to this directory: %CD%
         echo   3. Run this setup again
         echo.
+        goto :end
     ) else if "!CHOICE!" == "2" (
         echo.
         echo Starting interactive setup...
@@ -94,9 +95,11 @@ if defined CONFIG_FILE (
         python scripts\player_setup.py --interactive
     ) else (
         echo Invalid choice. Please run this setup again.
+        goto :end
     )
 )
 
+:end
 echo.
 echo Setup finished. Check above for any error messages.
 echo.
