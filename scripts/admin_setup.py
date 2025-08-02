@@ -65,7 +65,7 @@ class AdminSetupManager:
         self.admin_config_file = self.project_root / "admin_config.json"
         self.tunnel_config_file = self.project_root / "tunnel_config.json"
         
-        print("🔧 SoulLink Tracker - Admin Setup Manager")
+        print("[ADMIN] SoulLink Tracker - Admin Setup Manager")
         print("=" * 60)
         print(f"Mode: {self.mode.upper()}")
         print(f"Project root: {self.project_root}")
@@ -79,15 +79,15 @@ class AdminSetupManager:
                 await self.reset_configuration()
             
             # Step 1: System requirements check
-            print("\n🔍 Step 1: Checking system requirements...")
+            print("\n[STEP 1] Checking system requirements...")
             await self.check_system_requirements()
             
             # Step 2: Install dependencies
-            print("\n📦 Step 2: Installing dependencies...")
+            print("\n[STEP 2] Installing dependencies...")
             await self.install_dependencies()
             
             # Step 3: Setup directories and permissions
-            print("\n📁 Step 3: Setting up directories...")
+            print("\n[STEP 3] Setting up directories...")
             await self.setup_directories()
             
             # Step 4: Initialize database
@@ -96,10 +96,10 @@ class AdminSetupManager:
             
             # Step 5: Configure networking
             if self.mode == "production":
-                print("\n🌐 Step 5: Setting up networking (Cloudflare tunnel)...")
+                print("\n[STEP 5] Setting up networking (Cloudflare tunnel)...")
                 await self.setup_networking()
             else:
-                print("\n🌐 Step 5: Skipping tunnel setup (development mode)")
+                print("\n[STEP 5] Skipping tunnel setup (development mode)")
             
             # Step 6: Start services
             print("\n[STEP 6] Starting services...")
@@ -114,11 +114,11 @@ class AdminSetupManager:
             await self.run_health_checks()
             
             # Step 9: Show admin dashboard
-            print("\n📊 Step 9: Opening admin dashboard...")
+            print("\n[STEP 9] Opening admin dashboard...")
             await self.open_admin_dashboard()
             
             # Step 10: Monitor services
-            print("\n👀 Step 10: Monitoring services...")
+            print("\n[STEP 10] Monitoring services...")
             await self.monitor_services()
             
         except KeyboardInterrupt:
@@ -312,7 +312,7 @@ class AdminSetupManager:
             with open(config_file, 'r') as f:
                 self.db_config = json.load(f)
             print(f"  📋 Run created: {self.db_config['run_name']}")
-            print(f"  👥 Players: {len(self.db_config['players'])}")
+            print(f"  [PLAYERS] Players: {len(self.db_config['players'])}")
         
         # Create database backup
         await self.create_database_backup()
@@ -327,7 +327,7 @@ class AdminSetupManager:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_file = self.logs_dir / f"database_backup_{timestamp}.db"
             shutil.copy2(db_file, backup_file)
-            print(f"  💾 Database backup created: {backup_file.name}")
+            print(f"  [BACKUP] Database backup created: {backup_file.name}")
     
     async def setup_networking(self):
         """Set up Cloudflare tunnel for external access."""
@@ -536,8 +536,8 @@ def create_player_packages():
     
     api_url = config["tunnel"]["url"] if config["tunnel"]["enabled"] else config["api"]["url"]
     
-    print(f"📦 Creating player packages...")
-    print(f"🌐 Server URL: {{api_url}}")
+    print(f"[PACKAGES] Creating player packages...")
+    print(f"[SERVER] Server URL: {{api_url}}")
     
     packages_dir = project_root / "player_packages"
     packages_dir.mkdir(exist_ok=True)
@@ -598,7 +598,7 @@ Contact the admin if you encounter any issues.
         
         print(f"  [OK] Package created: {{zip_file.name}}")
     
-    print(f"\\n📁 All packages created in: {{packages_dir}}")
+    print(f"\\n[PACKAGES] All packages created in: {{packages_dir}}")
     print("\\n📧 Send the appropriate ZIP file to each player")
 
 if __name__ == "__main__":
@@ -671,19 +671,19 @@ if __name__ == "__main__":
         print("[ADMIN] SOULLINK TRACKER - ADMIN SUMMARY")
         print("=" * 80)
         
-        print(f"\\n🔧 System Information:")
+        print(f"\\n[SYSTEM] System Information:")
         print(f"   Mode: {self.mode.upper()}")
         print(f"   Project: {self.project_root}")
         print(f"   Python: {sys.version.split()[0]}")
         
-        print(f"\\n🌐 Server URLs:")
+        print(f"\\n[SERVER] Server URLs:")
         print(f"   Local API: {self.api_url}")
         if self.tunnel_url:
             print(f"   Public URL: {self.tunnel_url}")
         print(f"   API Docs: {self.api_url}/docs")
         
         if hasattr(self, 'db_config'):
-            print(f"\\n📊 Current Run:")
+            print(f"\\n[RUN] Current Run:")
             print(f"   Name: {self.db_config['run_name']}")
             print(f"   ID: {self.db_config['run_id']}")
             print(f"   Players: {len(self.db_config['players'])}")
@@ -694,7 +694,7 @@ if __name__ == "__main__":
         print(f"   Health check: python scripts/health_check.py")
         print(f"   Database backup: python scripts/backup_database.py")
         
-        print(f"\\n📁 Important Files:")
+        print(f"\\n[FILES] Important Files:")
         print(f"   Admin config: {self.admin_config_file.name}")
         print(f"   Logs directory: {self.logs_dir}")
         print(f"   Database: soullink_tracker.db")
@@ -709,7 +709,7 @@ if __name__ == "__main__":
     
     async def monitor_services(self):
         """Monitor all running services."""
-        print("\\n🔄 Service monitoring started (Ctrl+C to stop)...")
+        print("\\n[MONITOR] Service monitoring started (Ctrl+C to stop)...")
         
         try:
             while True:
@@ -757,7 +757,7 @@ if __name__ == "__main__":
     
     async def cleanup(self):
         """Clean up all processes and resources."""
-        print("🧹 Cleaning up services...")
+        print("[CLEANUP] Cleaning up services...")
         
         # Stop API server
         if self.api_process:
@@ -781,7 +781,7 @@ if __name__ == "__main__":
                 print("  [WARNING] Force killing tunnel...")
                 self.tunnel_process.kill()
         
-        print("🏁 Admin cleanup complete")
+        print("[COMPLETE] Admin cleanup complete")
 
 
 async def main():
@@ -812,7 +812,7 @@ async def main():
     
     # Handle tunnel-only mode
     if args.tunnel_only:
-        print("🌐 Setting up Cloudflare tunnel only...")
+        print("[TUNNEL] Setting up Cloudflare tunnel only...")
         await manager.install_cloudflare_tunnel()
         await manager.setup_networking()
         return

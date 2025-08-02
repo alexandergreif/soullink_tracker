@@ -87,15 +87,15 @@ class PlayerSetupManager:
             await self.load_player_config()
             
             # Step 2: Check system requirements
-            print("\\n🔍 Step 2: Checking system requirements...")
+            print("\\n[STEP 2] Checking system requirements...")
             await self.check_system_requirements()
             
             # Step 3: Install dependencies
-            print("\\n📦 Step 3: Installing dependencies...")
+            print("\\n[STEP 3] Installing dependencies...")
             await self.install_dependencies()
             
             # Step 4: Setup directories
-            print("\\n📁 Step 4: Setting up directories...")
+            print("\\n[STEP 4] Setting up directories...")
             await self.setup_directories()
             
             # Step 5: Download/setup client files
@@ -115,15 +115,15 @@ class PlayerSetupManager:
             await self.setup_desmume_integration()
             
             # Step 9: Start event watcher
-            print("\\n🔄 Step 9: Starting event watcher...")
+            print("\\n[STEP 9] Starting event watcher...")
             await self.start_event_watcher()
             
             # Step 10: Open dashboard and provide instructions
-            print("\\n📊 Step 10: Opening player dashboard...")
+            print("\\n[STEP 10] Opening player dashboard...")
             await self.open_player_dashboard()
             
             # Step 11: Monitor and manage
-            print("\\n👀 Step 11: Monitoring system...")
+            print("\\n[STEP 11] Monitoring system...")
             await self.monitor_system()
             
         except KeyboardInterrupt:
@@ -161,11 +161,11 @@ class PlayerSetupManager:
             raise ValueError(f"Missing required configuration fields: {missing_fields}")
         
         print(f"  [OK] Player: {self.player_config['player_name']}")
-        print(f"  🌐 Server: {self.player_config['server_url']}")
+        print(f"  [SERVER] Server: {self.player_config['server_url']}")
     
     async def create_interactive_config(self):
         """Create player configuration interactively."""
-        print("\\n🔧 Interactive Player Configuration")
+        print("\\n[CONFIG] Interactive Player Configuration")
         print("-" * 40)
         
         self.player_config["player_name"] = input("Enter your player name: ").strip()
@@ -208,7 +208,7 @@ class PlayerSetupManager:
             print("  [OK] Server connectivity")
         except Exception as e:
             print(f"  [WARNING] Server connectivity issue: {e}")
-            print("  🔄 Will retry connection during setup...")
+            print("  [RETRY] Will retry connection during setup...")
         
         print("  - Checking for DeSmuME...")
         desmume_found = self.find_desmume_installation()
@@ -604,7 +604,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         print(f"   ID: {self.player_config['player_id']}")
         print(f"   Server: {self.player_config['server_url']}")
         
-        print(f"\\n📁 Configuration Files:")
+        print(f"\\n[FILES] Configuration Files:")
         print(f"   Watcher config: {self.watcher_config_file}")
         print(f"   Lua config: {self.lua_config_file}")
         
@@ -614,13 +614,13 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         print(f"   3. Tools → Lua Script Console")
         print(f"   4. Load: {self.lua_config_file}")
         
-        print(f"\\n📊 Monitoring:")
+        print(f"\\n[MONITOR] Monitoring:")
         print(f"   Event watcher: {'Running' if self.watcher_process and self.watcher_process.poll() is None else 'Stopped'}")
         player_name_lower = self.player_config['player_name'].lower()
         print(f"   Log file: {self.logs_dir / f'{player_name_lower}_watcher.log'}")
         print(f"   Events dir: {self.temp_dir / 'events'}")
         
-        print(f"\\n🌐 Web Dashboard:")
+        print(f"\\n[DASHBOARD] Web Dashboard:")
         if hasattr(self, 'available_runs') and self.available_runs:
             run_id = self.available_runs[0]['id'] 
             dashboard_url = f"{self.player_config['server_url']}/dashboard?run={run_id}"
@@ -638,7 +638,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
     
     async def monitor_system(self):
         """Monitor the event watcher and provide status updates."""
-        print("\\n🔄 System monitoring started (Ctrl+C to stop)...")
+        print("\\n[MONITOR] System monitoring started (Ctrl+C to stop)...")
         
         last_status_time = time.time()
         
@@ -659,7 +659,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
                             print(f"Error output: {stderr}")
                         
                         # Attempt to restart
-                        print("🔄 Attempting to restart event watcher...")
+                        print("[RESTART] Attempting to restart event watcher...")
                         await self.start_event_watcher()
                 
                 await asyncio.sleep(10)
@@ -670,7 +670,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
     
     async def cleanup(self):
         """Clean up processes and resources."""
-        print("🧹 Cleaning up player setup...")
+        print("[CLEANUP] Cleaning up player setup...")
         
         # Stop watcher process
         if self.watcher_process:
@@ -683,7 +683,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
                 print("  [WARNING] Force killing event watcher...")
                 self.watcher_process.kill()
         
-        print("🏁 Player cleanup complete")
+        print("[COMPLETE] Player cleanup complete")
         print("👋 Thank you for playing SoulLink!")
 
 
@@ -716,7 +716,7 @@ async def main():
         config_files = list(Path.cwd().glob("*config*.json"))
         if config_files:
             config_file = config_files[0]
-            print(f"📁 Found config: {config_file.name}")
+            print(f"[CONFIG] Found config: {config_file.name}")
             manager.config_file = config_file
     
     # Run setup
