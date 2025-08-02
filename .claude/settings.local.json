@@ -34,7 +34,8 @@
       "WebFetch(domain:github.com)",
       "mcp__RepoPrompt__get_code_structure",
       "Bash(rm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
