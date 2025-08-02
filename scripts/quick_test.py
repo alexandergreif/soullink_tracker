@@ -56,7 +56,7 @@ class QuickTester:
         }
         self.test_results.append(result)
         
-        status = "✅" if success else "❌"
+        status = "[OK]" if success else "[FAIL]"
         print(f"{status} {test_name}: {message}")
         
         if details:
@@ -316,17 +316,17 @@ class QuickTester:
         
         print(f"🧪 Quick Test Summary:")
         print(f"   Total tests: {total}")
-        print(f"   ✅ Passed: {passed}")
-        print(f"   ❌ Failed: {failed}")
+        print(f"   [PASS] Passed: {passed}")
+        print(f"   [FAIL] Failed: {failed}")
         
         if failed == 0:
-            print(f"\n🎉 All tests passed! System is ready for playtest.")
+            print(f"\n[SUCCESS] All tests passed! System is ready for playtest.")
         else:
             print(f"\n🚨 {failed} tests failed")
             print("\nFailed tests:")
             for result in self.test_results:
                 if not result["success"]:
-                    print(f"   ❌ {result['test']}: {result['message']}")
+                    print(f"   [FAIL] {result['test']}: {result['message']}")
         
         # Performance info
         total_time = max(r["timestamp"] for r in self.test_results) - min(r["timestamp"] for r in self.test_results)

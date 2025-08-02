@@ -75,7 +75,7 @@ class AdminSetupManager:
         """Run the complete admin setup process."""
         try:
             if reset:
-                print("\n🗑️ Resetting previous configuration...")
+                print("\n[RESET] Resetting previous configuration...")
                 await self.reset_configuration()
             
             # Step 1: System requirements check
@@ -91,7 +91,7 @@ class AdminSetupManager:
             await self.setup_directories()
             
             # Step 4: Initialize database
-            print("\n🗄️ Step 4: Setting up database...")
+            print("\n[STEP 4] Setting up database...")
             await self.setup_database()
             
             # Step 5: Configure networking
@@ -102,15 +102,15 @@ class AdminSetupManager:
                 print("\n🌐 Step 5: Skipping tunnel setup (development mode)")
             
             # Step 6: Start services
-            print("\n🚀 Step 6: Starting services...")
+            print("\n[STEP 6] Starting services...")
             await self.start_services()
             
             # Step 7: Generate admin tools and configs
-            print("\n⚙️ Step 7: Generating admin configuration...")
+            print("\n[STEP 7] Generating admin configuration...")
             await self.generate_admin_configs()
             
             # Step 8: Run health checks
-            print("\n❤️ Step 8: Running health checks...")
+            print("\n[STEP 8] Running health checks...")
             await self.run_health_checks()
             
             # Step 9: Show admin dashboard
@@ -125,7 +125,7 @@ class AdminSetupManager:
             print("\n\n🛑 Shutting down admin setup...")
             await self.cleanup()
         except Exception as e:
-            print(f"\n❌ Error during admin setup: {e}")
+            print(f"\n[ERROR] Error during admin setup: {e}")
             await self.cleanup()
             sys.exit(1)
     
@@ -134,26 +134,26 @@ class AdminSetupManager:
         print("  - Checking Python version...")
         if sys.version_info < (3, 9):
             raise RuntimeError(f"Python 3.9+ required, found {sys.version}")
-        print(f"  ✅ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+        print(f"  [OK] Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
         
         print("  - Checking operating system...")
         os_name = platform.system()
-        print(f"  ✅ Operating System: {os_name} {platform.release()}")
+        print(f"  [OK] Operating System: {os_name} {platform.release()}")
         
         print("  - Checking available disk space...")
         total, used, free = shutil.disk_usage(self.project_root)
         free_gb = free // (1024**3)
         if free_gb < 1:
-            print(f"  ⚠️ Low disk space: {free_gb}GB available")
+            print(f"  [WARNING] Low disk space: {free_gb}GB available")
         else:
-            print(f"  ✅ Disk space: {free_gb}GB available")
+            print(f"  [OK] Disk space: {free_gb}GB available")
         
         print("  - Checking network connectivity...")
         try:
             urllib.request.urlopen('https://google.com', timeout=5)
-            print("  ✅ Internet connectivity")
+            print("  [OK] Internet connectivity")
         except:
-            print("  ⚠️ Limited internet connectivity")
+            print("  [WARNING] Limited internet connectivity")
         
         print("  - Checking required commands...")
         required_commands = ["git", "python", "pip"]
@@ -168,7 +168,7 @@ class AdminSetupManager:
         if missing_commands:
             raise RuntimeError(f"Missing required commands: {missing_commands}")
         
-        print(f"  ✅ All required commands available: {required_commands}")
+        print(f"  [OK] All required commands available: {required_commands}")
     
     async def install_dependencies(self):
         """Install Python dependencies."""
@@ -187,7 +187,7 @@ class AdminSetupManager:
             subprocess.run([sys.executable, "-m", "pip", "install", "-e", ".[dev]", "--quiet"], 
                           cwd=self.project_root, check=True)
         
-        print("  ✅ Python dependencies installed")
+        print("  [OK] Python dependencies installed")
         
         # Install Cloudflare tunnel if in production mode
         if self.mode == "production":
@@ -224,7 +224,7 @@ class AdminSetupManager:
         binary_path = self.project_root / local_name
         
         if binary_path.exists():
-            print("  ✅ Cloudflare tunnel already installed")
+            print("  [OK] Cloudflare tunnel already installed")
             return
         
         print(f"  - Downloading {binary_name}...")
@@ -243,7 +243,7 @@ class AdminSetupManager:
             if system != "windows":
                 os.chmod(binary_path, 0o755)
             
-            print("  ✅ Cloudflare tunnel installed")
+            print("  [OK] Cloudflare tunnel installed")
             
         except Exception as e:
             raise RuntimeError(f"Failed to install Cloudflare tunnel: {e}")
@@ -261,7 +261,7 @@ class AdminSetupManager:
         
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
-            print(f"  ✅ Created directory: {directory.relative_to(self.project_root)}")
+            print(f"  [OK] Created directory: {directory.relative_to(self.project_root)}")
         
         # Set up log rotation
         self.setup_log_rotation()
@@ -284,7 +284,7 @@ class AdminSetupManager:
         
         logrotate_file = self.project_root / "logrotate.conf"
         logrotate_file.write_text(logrotate_config.strip())
-        print(f"  ✅ Log rotation configured: {logrotate_file.relative_to(self.project_root)}")
+        print(f"  [OK] Log rotation configured: {logrotate_file.relative_to(self.project_root)}")
     
     async def setup_database(self):
         """Initialize and configure the database."""
@@ -300,11 +300,11 @@ class AdminSetupManager:
         ], capture_output=True, text=True, cwd=self.project_root)
         
         if result.returncode != 0:
-            print(f"❌ Database initialization failed:")
+            print(f"[ERROR] Database initialization failed:")
             print(result.stderr)
             raise RuntimeError("Database initialization failed")
         
-        print("  ✅ Database initialized")
+        print("  [OK] Database initialized")
         
         # Load generated config
         config_file = self.project_root / "test_config.json"
@@ -373,7 +373,7 @@ class AdminSetupManager:
         
         if tunnel_url:
             self.tunnel_url = tunnel_url
-            print(f"  ✅ Tunnel connectivity verified: {tunnel_url}")
+            print(f"  [OK] Tunnel connectivity verified: {tunnel_url}")
             
             # Save tunnel config
             tunnel_config = {
@@ -384,7 +384,7 @@ class AdminSetupManager:
             with open(self.tunnel_config_file, 'w') as f:
                 json.dump(tunnel_config, f, indent=2)
         else:
-            print("  ⚠️ Could not verify tunnel connectivity")
+            print("  [WARNING] Could not verify tunnel connectivity")
     
     async def start_services(self):
         """Start all required services."""
@@ -417,7 +417,7 @@ class AdminSetupManager:
                 import requests
                 response = requests.get(f"{self.api_url}/health", timeout=1)
                 if response.status_code == 200:
-                    print("  ✅ API server started successfully")
+                    print("  [OK] API server started successfully")
                     break
             except:
                 pass
@@ -467,9 +467,9 @@ class AdminSetupManager:
         
         if tunnel_url:
             self.tunnel_url = tunnel_url
-            print(f"  ✅ Tunnel started: {tunnel_url}")
+            print(f"  [OK] Tunnel started: {tunnel_url}")
         else:
-            print("  ⚠️ Could not extract tunnel URL")
+            print("  [WARNING] Could not extract tunnel URL")
     
     async def generate_admin_configs(self):
         """Generate admin configuration files and tools."""
@@ -504,7 +504,7 @@ class AdminSetupManager:
         with open(self.admin_config_file, 'w') as f:
             json.dump(admin_config, f, indent=2)
         
-        print(f"  ✅ Admin configuration saved: {self.admin_config_file.name}")
+        print(f"  [OK] Admin configuration saved: {self.admin_config_file.name}")
         
         # Generate player distribution script
         await self.generate_player_distribution_script()
@@ -528,7 +528,7 @@ def create_player_packages():
     admin_config_file = project_root / "admin_config.json"
     
     if not admin_config_file.exists():
-        print("❌ Admin configuration not found. Run admin setup first.")
+        print("[ERROR] Admin configuration not found. Run admin setup first.")
         return
     
     with open(admin_config_file, 'r') as f:
@@ -596,7 +596,7 @@ Contact the admin if you encounter any issues.
                     arcname = file_path.relative_to(player_dir)
                     zf.write(file_path, arcname)
         
-        print(f"  ✅ Package created: {{zip_file.name}}")
+        print(f"  [OK] Package created: {{zip_file.name}}")
     
     print(f"\\n📁 All packages created in: {{packages_dir}}")
     print("\\n📧 Send the appropriate ZIP file to each player")
@@ -610,7 +610,7 @@ if __name__ == "__main__":
             f.write(script_content)
         
         os.chmod(distribution_script, 0o755)
-        print(f"  ✅ Player distribution script created: {distribution_script.name}")
+        print(f"  [OK] Player distribution script created: {distribution_script.name}")
     
     async def run_health_checks(self):
         """Run comprehensive health checks."""
@@ -620,33 +620,33 @@ if __name__ == "__main__":
             response = requests.get(f"{self.api_url}/health", timeout=5)
             if response.status_code == 200:
                 health_data = response.json()
-                print(f"  ✅ API: {health_data.get('service')} v{health_data.get('version')}")
+                print(f"  [OK] API: {health_data.get('service')} v{health_data.get('version')}")
             else:
-                print(f"  ⚠️ API returned status {response.status_code}")
+                print(f"  [WARNING] API returned status {response.status_code}")
         except Exception as e:
-            print(f"  ❌ API health check failed: {e}")
+            print(f"  [ERROR] API health check failed: {e}")
         
         print("  - Database connectivity...")
         try:
             response = requests.get(f"{self.api_url}/v1/runs", timeout=5)
             if response.status_code == 200:
                 runs = response.json()
-                print(f"  ✅ Database: {len(runs)} runs available")
+                print(f"  [OK] Database: {len(runs)} runs available")
             else:
-                print(f"  ⚠️ Database check returned status {response.status_code}")
+                print(f"  [WARNING] Database check returned status {response.status_code}")
         except Exception as e:
-            print(f"  ❌ Database check failed: {e}")
+            print(f"  [ERROR] Database check failed: {e}")
         
         if self.tunnel_url:
             print("  - Tunnel connectivity...")
             try:
                 response = requests.get(f"{self.tunnel_url}/health", timeout=10)
                 if response.status_code == 200:
-                    print(f"  ✅ Tunnel: External access working")
+                    print(f"  [OK] Tunnel: External access working")
                 else:
-                    print(f"  ⚠️ Tunnel returned status {response.status_code}")
+                    print(f"  [WARNING] Tunnel returned status {response.status_code}")
             except Exception as e:
-                print(f"  ❌ Tunnel check failed: {e}")
+                print(f"  [ERROR] Tunnel check failed: {e}")
     
     async def open_admin_dashboard(self):
         """Open the admin dashboard."""
@@ -657,9 +657,9 @@ if __name__ == "__main__":
         
         try:
             webbrowser.open(dashboard_url)
-            print(f"  ✅ Admin dashboard opened: {dashboard_url}")
+            print(f"  [OK] Admin dashboard opened: {dashboard_url}")
         except Exception as e:
-            print(f"  ⚠️ Could not open dashboard: {e}")
+            print(f"  [WARNING] Could not open dashboard: {e}")
             print(f"  🔗 Open manually: {dashboard_url}")
         
         # Show all important URLs
@@ -668,7 +668,7 @@ if __name__ == "__main__":
     def show_admin_summary(self):
         """Show comprehensive admin summary."""
         print("\\n" + "=" * 80)
-        print("🎮 SOULLINK TRACKER - ADMIN SUMMARY")
+        print("[ADMIN] SOULLINK TRACKER - ADMIN SUMMARY")
         print("=" * 80)
         
         print(f"\\n🔧 System Information:")
@@ -689,7 +689,7 @@ if __name__ == "__main__":
             print(f"   Players: {len(self.db_config['players'])}")
             print(f"   Dashboard: {self.api_url}/dashboard?run={self.db_config['run_id']}")
         
-        print(f"\\n🛠️ Admin Tools:")
+        print(f"\\n[TOOLS] Admin Tools:")
         print(f"   Distribute players: python scripts/distribute_players.py")
         print(f"   Health check: python scripts/health_check.py")
         print(f"   Database backup: python scripts/backup_database.py")
@@ -718,11 +718,11 @@ if __name__ == "__main__":
                 tunnel_running = self.tunnel_process and self.tunnel_process.poll() is None
                 
                 if not api_running:
-                    print("⚠️ API server process has stopped")
+                    print("[WARNING] API server process has stopped")
                     break
                 
                 if self.mode == "production" and not tunnel_running:
-                    print("⚠️ Tunnel process has stopped")
+                    print("[WARNING] Tunnel process has stopped")
                 
                 await asyncio.sleep(10)
                 
@@ -745,7 +745,7 @@ if __name__ == "__main__":
         for file_path in files_to_remove:
             if file_path.exists():
                 file_path.unlink()
-                print(f"    ✅ Removed: {file_path.name}")
+                print(f"    [OK] Removed: {file_path.name}")
         
         print("  - Clearing temporary directories...")
         dirs_to_clear = [self.logs_dir, self.temp_dir]
@@ -753,7 +753,7 @@ if __name__ == "__main__":
             if dir_path.exists():
                 shutil.rmtree(dir_path)
                 dir_path.mkdir(parents=True, exist_ok=True)
-                print(f"    ✅ Cleared: {dir_path.name}")
+                print(f"    [OK] Cleared: {dir_path.name}")
     
     async def cleanup(self):
         """Clean up all processes and resources."""
@@ -765,9 +765,9 @@ if __name__ == "__main__":
             self.api_process.terminate()
             try:
                 self.api_process.wait(timeout=10)
-                print("  ✅ API server stopped")
+                print("  [OK] API server stopped")
             except subprocess.TimeoutExpired:
-                print("  ⚠️ Force killing API server...")
+                print("  [WARNING] Force killing API server...")
                 self.api_process.kill()
         
         # Stop tunnel
@@ -776,9 +776,9 @@ if __name__ == "__main__":
             self.tunnel_process.terminate()
             try:
                 self.tunnel_process.wait(timeout=5)
-                print("  ✅ Tunnel stopped")
+                print("  [OK] Tunnel stopped")
             except subprocess.TimeoutExpired:
-                print("  ⚠️ Force killing tunnel...")
+                print("  [WARNING] Force killing tunnel...")
                 self.tunnel_process.kill()
         
         print("🏁 Admin cleanup complete")

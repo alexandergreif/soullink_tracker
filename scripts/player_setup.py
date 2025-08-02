@@ -73,7 +73,7 @@ class PlayerSetupManager:
             self.temp_dir = self.project_root / "temp"
             self.logs_dir = self.project_root / "logs"
         
-        print("🎮 SoulLink Tracker - Player Setup Manager")
+        print("[PLAYER] SoulLink Tracker - Player Setup Manager")
         print("=" * 60)
         print(f"Mode: {'Package' if self.player_package_mode else 'Development'}")
         print(f"Location: {self.project_root}")
@@ -83,7 +83,7 @@ class PlayerSetupManager:
         """Run the complete player setup process."""
         try:
             # Step 1: Load or create player configuration
-            print("\\n⚙️ Step 1: Loading player configuration...")
+            print("\\n[STEP 1] Loading player configuration...")
             await self.load_player_config()
             
             # Step 2: Check system requirements
@@ -107,11 +107,11 @@ class PlayerSetupManager:
             await self.test_server_connection()
             
             # Step 7: Generate player-specific configs
-            print("\\n⚙️ Step 7: Generating configurations...")
+            print("\\n[STEP 7] Generating configurations...")
             await self.generate_player_configs()
             
             # Step 8: Setup DeSmuME integration
-            print("\\n🕹️ Step 8: Setting up DeSmuME integration...")
+            print("\\n[STEP 8] Setting up DeSmuME integration...")
             await self.setup_desmume_integration()
             
             # Step 9: Start event watcher
@@ -130,7 +130,7 @@ class PlayerSetupManager:
             print("\\n\\n🛑 Shutting down player setup...")
             await self.cleanup()
         except Exception as e:
-            print(f"\\n❌ Error during player setup: {e}")
+            print(f"\\n[ERROR] Error during player setup: {e}")
             await self.cleanup()
             sys.exit(1)
     
@@ -160,7 +160,7 @@ class PlayerSetupManager:
         if missing_fields:
             raise ValueError(f"Missing required configuration fields: {missing_fields}")
         
-        print(f"  ✅ Player: {self.player_config['player_name']}")
+        print(f"  [OK] Player: {self.player_config['player_name']}")
         print(f"  🌐 Server: {self.player_config['server_url']}")
     
     async def create_interactive_config(self):
@@ -181,41 +181,41 @@ class PlayerSetupManager:
         with open(config_file, 'w') as f:
             json.dump(self.player_config, f, indent=2)
         
-        print(f"  ✅ Configuration saved to: {config_file.name}")
+        print(f"  [OK] Configuration saved to: {config_file.name}")
     
     async def check_system_requirements(self):
         """Check system requirements for the player setup."""
         print("  - Checking Python version...")
         if sys.version_info < (3, 8):
             raise RuntimeError(f"Python 3.8+ required, found {sys.version}")
-        print(f"  ✅ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+        print(f"  [OK] Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
         
         print("  - Checking operating system...")
         os_name = platform.system()
-        print(f"  ✅ Operating System: {os_name} {platform.release()}")
+        print(f"  [OK] Operating System: {os_name} {platform.release()}")
         
         print("  - Checking available disk space...")
         total, used, free = shutil.disk_usage(self.project_root)
         free_mb = free // (1024**2)
         if free_mb < 100:
-            print(f"  ⚠️ Low disk space: {free_mb}MB available")
+            print(f"  [WARNING] Low disk space: {free_mb}MB available")
         else:
-            print(f"  ✅ Disk space: {free_mb}MB available")
+            print(f"  [OK] Disk space: {free_mb}MB available")
         
         print("  - Checking network connectivity...")
         try:
             urllib.request.urlopen(self.player_config["server_url"] + "/health", timeout=5)
-            print("  ✅ Server connectivity")
+            print("  [OK] Server connectivity")
         except Exception as e:
-            print(f"  ⚠️ Server connectivity issue: {e}")
+            print(f"  [WARNING] Server connectivity issue: {e}")
             print("  🔄 Will retry connection during setup...")
         
         print("  - Checking for DeSmuME...")
         desmume_found = self.find_desmume_installation()
         if desmume_found:
-            print(f"  ✅ DeSmuME found: {desmume_found}")
+            print(f"  [OK] DeSmuME found: {desmume_found}")
         else:
-            print("  ⚠️ DeSmuME not found in standard locations")
+            print("  [WARNING] DeSmuME not found in standard locations")
             print("  📥 Will provide download instructions...")
     
     def find_desmume_installation(self) -> Optional[str]:
@@ -274,12 +274,12 @@ class PlayerSetupManager:
             try:
                 subprocess.run([sys.executable, "-m", "pip", "install", package, "--quiet"], 
                               check=True, capture_output=True)
-                print(f"    ✅ {package.split('>=')[0]}")
+                print(f"    [OK] {package.split('>=')[0]}")
             except subprocess.CalledProcessError as e:
-                print(f"    ❌ Failed to install {package}: {e}")
+                print(f"    [ERROR] Failed to install {package}: {e}")
                 raise
         
-        print("  ✅ All Python dependencies installed")
+        print("  [OK] All Python dependencies installed")
     
     async def setup_directories(self):
         """Create necessary directories."""
@@ -293,7 +293,7 @@ class PlayerSetupManager:
         
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
-            print(f"  ✅ Created: {directory.relative_to(self.project_root)}")
+            print(f"  [OK] Created: {directory.relative_to(self.project_root)}")
     
     async def setup_client_files(self):
         """Setup or download client files."""
@@ -316,10 +316,10 @@ class PlayerSetupManager:
                     missing_files.append(file_path)
             
             if missing_files:
-                print(f"  ❌ Missing client files: {missing_files}")
+                print(f"  [ERROR] Missing client files: {missing_files}")
                 await self.download_client_files()
             else:
-                print("  ✅ All client files present")
+                print("  [OK] All client files present")
         else:
             print("  - Using client files from project directory")
     
@@ -344,9 +344,9 @@ class PlayerSetupManager:
             try:
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 urllib.request.urlretrieve(url, local_path)
-                print(f"    ✅ Downloaded: {file_path}")
+                print(f"    [OK] Downloaded: {file_path}")
             except Exception as e:
-                print(f"    ❌ Failed to download {file_path}: {e}")
+                print(f"    [ERROR] Failed to download {file_path}: {e}")
                 # Create minimal fallback if critical file
                 if "event_watcher.py" in file_path:
                     await self.create_fallback_watcher()
@@ -365,7 +365,7 @@ import sys
 from pathlib import Path
 
 async def main():
-    print("⚠️ Using fallback event watcher")
+    print("[WARNING] Using fallback event watcher")
     print("Please contact admin for full client files")
     
     # Basic event monitoring loop
@@ -381,7 +381,7 @@ if __name__ == "__main__":
         watcher_path.parent.mkdir(parents=True, exist_ok=True)
         with open(watcher_path, 'w') as f:
             f.write(fallback_content)
-        print("    ✅ Created fallback event watcher")
+        print("    [OK] Created fallback event watcher")
     
     async def test_server_connection(self):
         """Test connection to the admin server."""
@@ -401,11 +401,11 @@ if __name__ == "__main__":
             response = requests.get(f"{server_url}/health", timeout=10)
             if response.status_code == 200:
                 health_data = response.json()
-                print(f"  ✅ Server health: {health_data.get('service')} v{health_data.get('version')}")
+                print(f"  [OK] Server health: {health_data.get('service')} v{health_data.get('version')}")
             else:
-                print(f"  ⚠️ Health check returned status {response.status_code}")
+                print(f"  [WARNING] Health check returned status {response.status_code}")
         except Exception as e:
-            print(f"  ❌ Health check failed: {e}")
+            print(f"  [ERROR] Health check failed: {e}")
             raise ConnectionError(f"Cannot connect to server: {e}")
         
         # Test authenticated endpoint
@@ -414,17 +414,17 @@ if __name__ == "__main__":
             response = requests.get(f"{server_url}/v1/runs", headers=headers, timeout=10)
             if response.status_code == 200:
                 runs = response.json()
-                print(f"  ✅ Authentication successful, {len(runs)} runs available")
+                print(f"  [OK] Authentication successful, {len(runs)} runs available")
                 self.available_runs = runs
             elif response.status_code == 401:
-                print("  ❌ Authentication failed - invalid token")
+                print("  [ERROR] Authentication failed - invalid token")
                 raise ValueError("Invalid bearer token")
             else:
-                print(f"  ⚠️ Auth test returned status {response.status_code}")
+                print(f"  [WARNING] Auth test returned status {response.status_code}")
         except Exception as e:
             if "Invalid bearer token" in str(e):
                 raise
-            print(f"  ❌ Auth test failed: {e}")
+            print(f"  [ERROR] Auth test failed: {e}")
     
     async def generate_player_configs(self):
         """Generate player-specific configuration files."""
@@ -451,7 +451,7 @@ if __name__ == "__main__":
         with open(watcher_config_file, 'w') as f:
             json.dump(watcher_config, f, indent=2)
         
-        print(f"  ✅ Watcher config: {watcher_config_file.name}")
+        print(f"  [OK] Watcher config: {watcher_config_file.name}")
         
         # Generate Lua configuration
         lua_config_content = f'''-- SoulLink Tracker - {player_name} Configuration
@@ -484,7 +484,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         with open(lua_config_file, 'w') as f:
             f.write(lua_config_content)
         
-        print(f"  ✅ Lua config: {lua_config_file.name}")
+        print(f"  [OK] Lua config: {lua_config_file.name}")
         
         # Store paths for later use
         self.watcher_config_file = watcher_config_file
@@ -495,7 +495,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         desmume_path = self.find_desmume_installation()
         
         if desmume_path:
-            print(f"  ✅ DeSmuME found at: {desmume_path}")
+            print(f"  [OK] DeSmuME found at: {desmume_path}")
         else:
             print("  📥 DeSmuME not found - providing download instructions...")
             self.show_desmume_download_instructions()
@@ -542,7 +542,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         watcher_script = self.client_dir / "watcher" / "event_watcher.py"
         
         if not watcher_script.exists():
-            print("  ❌ Event watcher script not found")
+            print("  [ERROR] Event watcher script not found")
             return
         
         print("  - Starting event watcher...")
@@ -565,10 +565,10 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         await asyncio.sleep(2)
         
         if self.watcher_process.poll() is None:
-            print(f"  ✅ Event watcher started (PID: {self.watcher_process.pid})")
+            print(f"  [OK] Event watcher started (PID: {self.watcher_process.pid})")
         else:
             stdout, stderr = self.watcher_process.communicate()
-            print(f"  ❌ Event watcher failed to start:")
+            print(f"  [ERROR] Event watcher failed to start:")
             print(f"     stdout: {stdout}")
             print(f"     stderr: {stderr}")
     
@@ -585,9 +585,9 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         
         try:
             webbrowser.open(dashboard_url)
-            print("  ✅ Dashboard opened in browser")
+            print("  [OK] Dashboard opened in browser")
         except Exception as e:
-            print(f"  ⚠️ Could not open dashboard: {e}")
+            print(f"  [WARNING] Could not open dashboard: {e}")
             print(f"  🔗 Open manually: {dashboard_url}")
         
         # Show player summary
@@ -596,7 +596,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
     def show_player_summary(self):
         """Show comprehensive player setup summary."""
         print("\\n" + "=" * 70)
-        print("🎮 SOULLINK TRACKER - PLAYER SETUP COMPLETE")
+        print("[COMPLETE] SOULLINK TRACKER - PLAYER SETUP COMPLETE")
         print("=" * 70)
         
         print(f"\\n👤 Player Information:")
@@ -608,7 +608,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         print(f"   Watcher config: {self.watcher_config_file}")
         print(f"   Lua config: {self.lua_config_file}")
         
-        print(f"\\n🕹️ DeSmuME Setup:")
+        print(f"\\n[DESMUME] DeSmuME Setup:")
         print(f"   1. Open DeSmuME")
         print(f"   2. Load Pokemon HG/SS ROM")
         print(f"   3. Tools → Lua Script Console")
@@ -628,7 +628,7 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
         else:
             print(f"   URL: {self.player_config['server_url']}/docs")
         
-        print(f"\\n🚀 Ready to Play!")
+        print(f"\\n[READY] Ready to Play!")
         print(f"   - Start playing Pokemon HG/SS in DeSmuME")
         print(f"   - Events will be automatically tracked")
         print(f"   - Monitor dashboard for real-time updates")
@@ -650,10 +650,10 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
                         # Process is running
                         current_time = time.time()
                         if current_time - last_status_time > 60:  # Status update every minute
-                            print(f"✅ Event watcher running (PID: {self.watcher_process.pid})")
+                            print(f"[OK] Event watcher running (PID: {self.watcher_process.pid})")
                             last_status_time = current_time
                     else:
-                        print("❌ Event watcher process has stopped")
+                        print("[ERROR] Event watcher process has stopped")
                         stdout, stderr = self.watcher_process.communicate()
                         if stderr:
                             print(f"Error output: {stderr}")
@@ -678,9 +678,9 @@ dofile("{str(self.client_dir / 'lua' / 'pokemon_tracker.lua').replace(chr(92), '
             self.watcher_process.terminate()
             try:
                 self.watcher_process.wait(timeout=5)
-                print("  ✅ Event watcher stopped")
+                print("  [OK] Event watcher stopped")
             except subprocess.TimeoutExpired:
-                print("  ⚠️ Force killing event watcher...")
+                print("  [WARNING] Force killing event watcher...")
                 self.watcher_process.kill()
         
         print("🏁 Player cleanup complete")
@@ -700,14 +700,14 @@ async def main():
     if args.config:
         config_file = Path(args.config)
         if not config_file.exists():
-            print(f"❌ Configuration file not found: {config_file}")
+            print(f"[ERROR] Configuration file not found: {config_file}")
             sys.exit(1)
     
     # Create manager
     manager = PlayerSetupManager(config_file=config_file)
     
     # Show welcome message
-    print("\\n🎮 Welcome to SoulLink Tracker Player Setup!")
+    print("\\n[WELCOME] Welcome to SoulLink Tracker Player Setup!")
     print("This will set up everything you need to participate in a SoulLink run.")
     
     if not config_file and not args.interactive:

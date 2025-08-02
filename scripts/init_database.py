@@ -38,7 +38,7 @@ def create_database(database_url: str = "sqlite:///soullink_tracker.db"):
     
     # Create all tables
     Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created successfully")
+    print("[OK] Database tables created successfully")
     
     return engine
 
@@ -48,7 +48,7 @@ def load_species_data(session, species_file: Path):
     print(f"Loading species data from {species_file}")
     
     if not species_file.exists():
-        print(f"⚠️  Species file not found: {species_file}")
+        print(f"[WARNING] Species file not found: {species_file}")
         print("Creating minimal species data for testing...")
         
         # Create some basic species for testing
@@ -71,7 +71,7 @@ def load_species_data(session, species_file: Path):
             species = Species(id=species_id, name=name, family_id=family_id)
             session.merge(species)  # Use merge to handle duplicates
             
-        print(f"✅ Created {len(test_species)} test species")
+        print(f"[OK] Created {len(test_species)} test species")
         return len(test_species)
     
     # Load from CSV file
@@ -87,7 +87,7 @@ def load_species_data(session, species_file: Path):
             session.merge(species)
             count += 1
     
-    print(f"✅ Loaded {count} species from CSV")
+    print(f"[OK] Loaded {count} species from CSV")
     return count
 
 
@@ -96,7 +96,7 @@ def load_routes_data(session, routes_file: Path):
     print(f"Loading routes data from {routes_file}")
     
     if not routes_file.exists():
-        print(f"⚠️  Routes file not found: {routes_file}")
+        print(f"[WARNING] Routes file not found: {routes_file}")
         print("Creating minimal routes data for testing...")
         
         # Create some basic HG/SS routes for testing
@@ -116,7 +116,7 @@ def load_routes_data(session, routes_file: Path):
             route = Route(id=route_id, label=label, region=region)
             session.merge(route)
             
-        print(f"✅ Created {len(test_routes)} test routes")
+        print(f"[OK] Created {len(test_routes)} test routes")
         return len(test_routes)
     
     # Load from CSV file
@@ -132,7 +132,7 @@ def load_routes_data(session, routes_file: Path):
             session.merge(route)
             count += 1
     
-    print(f"✅ Loaded {count} routes from CSV")
+    print(f"[OK] Loaded {count} routes from CSV")
     return count
 
 
@@ -182,7 +182,7 @@ def create_sample_run(session):
     
     session.commit()
     
-    print(f"✅ Created sample run: {run.name}")
+    print(f"[OK] Created sample run: {run.name}")
     print(f"   Run ID: {run.id}")
     print("   Players:")
     for player in players:

@@ -42,7 +42,7 @@ class PlaytestManager:
         self.client_dir = self.project_root / "client"
         self.web_dir = self.project_root / "web"
         
-        print("🎮 SoulLink Tracker - Playtest Manager")
+        print("[PLAYTEST] SoulLink Tracker - Playtest Manager")
         print("=" * 50)
     
     async def run_playtest_setup(self):
@@ -53,11 +53,11 @@ class PlaytestManager:
             await self.initialize_database()
             
             # Step 2: Create player configurations
-            print("\n⚙️ Step 2: Creating player configurations...")
+            print("\n[STEP 2] Creating player configurations...")
             await self.create_player_configs()
             
             # Step 3: Start API server
-            print("\n🚀 Step 3: Starting API server...")
+            print("\n[STEP 3] Starting API server...")
             await self.start_api_server()
             
             # Step 4: Open web dashboard
@@ -76,7 +76,7 @@ class PlaytestManager:
             print("\n\n🛑 Shutting down playtest...")
             await self.cleanup()
         except Exception as e:
-            print(f"\n❌ Error during playtest setup: {e}")
+            print(f"\n[ERROR] Error during playtest setup: {e}")
             await self.cleanup()
             sys.exit(1)
     
@@ -93,11 +93,11 @@ class PlaytestManager:
         ], capture_output=True, text=True, cwd=self.project_root)
         
         if result.returncode != 0:
-            print(f"❌ Database initialization failed:")
+            print(f"[ERROR] Database initialization failed:")
             print(result.stderr)
             raise RuntimeError("Database initialization failed")
         
-        print("  ✅ Database initialized successfully")
+        print("  [OK] Database initialized successfully")
         
         # Load the generated config
         config_file = self.project_root / "test_config.json"
@@ -123,15 +123,15 @@ class PlaytestManager:
             print("  - Creating Lua configurations...")
             lua_configs = config_manager.create_lua_configs()
             
-            print(f"  ✅ Created {len(watcher_configs)} watcher configs")
-            print(f"  ✅ Created {len(lua_configs)} Lua configs")
+            print(f"  [OK] Created {len(watcher_configs)} watcher configs")
+            print(f"  [OK] Created {len(lua_configs)} Lua configs")
             
             # Store config paths for later use
             self.watcher_configs = watcher_configs
             self.lua_configs = lua_configs
             
         except Exception as e:
-            print(f"❌ Failed to create player configs: {e}")
+            print(f"[ERROR] Failed to create player configs: {e}")
             raise
     
     async def start_api_server(self):
@@ -142,7 +142,7 @@ class PlaytestManager:
         try:
             import uvicorn
         except ImportError:
-            print("❌ uvicorn not found. Install with: pip install uvicorn")
+            print("[ERROR] uvicorn not found. Install with: pip install uvicorn")
             raise
         
         # Start server in subprocess
@@ -171,7 +171,7 @@ class PlaytestManager:
                 import requests
                 response = requests.get(f"{self.api_url}/health", timeout=1)
                 if response.status_code == 200:
-                    print("  ✅ API server started successfully")
+                    print("  [OK] API server started successfully")
                     server_info = response.json()
                     print(f"     Service: {server_info.get('service', 'unknown')}")
                     print(f"     Version: {server_info.get('version', 'unknown')}")
@@ -184,12 +184,12 @@ class PlaytestManager:
         # Check if process is still running
         if self.api_process.poll() is not None:
             stdout, stderr = self.api_process.communicate()
-            print(f"❌ API server failed to start:")
+            print(f"[ERROR] API server failed to start:")
             print(f"stdout: {stdout}")
             print(f"stderr: {stderr}")
             raise RuntimeError("API server failed to start")
         
-        print("⚠️ API server may not be fully ready yet")
+        print("[WARNING] API server may not be fully ready yet")
     
     async def open_dashboard(self):
         """Open the web dashboard in the default browser."""
@@ -199,9 +199,9 @@ class PlaytestManager:
         
         try:
             webbrowser.open(dashboard_url)
-            print("  ✅ Dashboard opened in browser")
+            print("  [OK] Dashboard opened in browser")
         except Exception as e:
-            print(f"  ⚠️ Could not open browser automatically: {e}")
+            print(f"  [WARNING] Could not open browser automatically: {e}")
             print(f"  🔗 Please open manually: {dashboard_url}")
     
     def show_manual_instructions(self):
@@ -210,7 +210,7 @@ class PlaytestManager:
         print("📋 MANUAL SETUP INSTRUCTIONS")
         print("="*60)
         
-        print("\n🎮 DeSmuME Setup (for each player):")
+        print("\n[DESMUME] DeSmuME Setup (for each player):")
         print("1. Open DeSmuME emulator")
         print("2. Load Pokemon HeartGold/SoulSilver ROM")
         print("3. Open Tools → Lua Script Console")
@@ -249,7 +249,7 @@ class PlaytestManager:
             while True:
                 # Check API server
                 if self.api_process and self.api_process.poll() is not None:
-                    print("⚠️ API server process has stopped")
+                    print("[WARNING] API server process has stopped")
                     break
                 
                 # Could add health checks here
@@ -269,9 +269,9 @@ class PlaytestManager:
             self.api_process.terminate()
             try:
                 self.api_process.wait(timeout=5)
-                print("  ✅ API server stopped")
+                print("  [OK] API server stopped")
             except subprocess.TimeoutExpired:
-                print("  ⚠️ API server did not stop gracefully, killing...")
+                print("  [WARNING] API server did not stop gracefully, killing...")
                 self.api_process.kill()
         
         # Stop watcher processes (if we started any)
@@ -316,11 +316,11 @@ async def main():
         print(f"   {key}: {value}")
     
     # Validate prerequisites
-    print("\n✅ Checking prerequisites...")
+    print("\n[CHECK] Checking prerequisites...")
     
     # Check Python version
     if sys.version_info < (3, 9):
-        print("❌ Python 3.9+ required")
+        print("[ERROR] Python 3.9+ required")
         sys.exit(1)
     
     # Check required packages
@@ -332,11 +332,11 @@ async def main():
             missing_packages.append(package)
     
     if missing_packages:
-        print(f"❌ Missing packages: {', '.join(missing_packages)}")
+        print(f"[ERROR] Missing packages: {', '.join(missing_packages)}")
         print("Install with: pip install " + " ".join(missing_packages))
         sys.exit(1)
     
-    print("✅ All prerequisites met")
+    print("[OK] All prerequisites met")
     
     # Start playtest setup
     await manager.run_playtest_setup()

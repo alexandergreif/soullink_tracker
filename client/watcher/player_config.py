@@ -356,17 +356,17 @@ def main():
         result = manager.validate_config(config_file)
         
         if result['errors']:
-            print("❌ Configuration errors:")
+            print("[ERROR] Configuration errors:")
             for error in result['errors']:
                 print(f"  - {error}")
         
         if result['warnings']:
-            print("⚠️ Configuration warnings:")
+            print("[WARNING] Configuration warnings:")
             for warning in result['warnings']:
                 print(f"  - {warning}")
         
         if not result['errors']:
-            print("✅ Configuration is valid")
+            print("[OK] Configuration is valid")
         
         sys.exit(1 if result['errors'] else 0)
     
@@ -382,9 +382,9 @@ def main():
     elif args.create_lua:
         try:
             lua_configs = manager.create_lua_configs()
-            print(f"✅ Created {len(lua_configs)} Lua configuration files")
+            print(f"[OK] Created {len(lua_configs)} Lua configuration files")
         except Exception as e:
-            print(f"❌ Failed to create Lua configs: {e}")
+            print(f"[ERROR] Failed to create Lua configs: {e}")
             sys.exit(1)
     
     elif args.list:
@@ -398,7 +398,7 @@ def main():
     
     elif args.cleanup:
         manager.cleanup_old_configs()
-        print("✅ Cleaned up old configuration files")
+        print("[OK] Cleaned up old configuration files")
     
     else:
         # Default: create watcher configs
@@ -408,29 +408,29 @@ def main():
                 watch_base_dir=args.watch_dir
             )
             
-            print(f"✅ Created {len(config_files)} watcher configuration files")
+            print(f"[OK] Created {len(config_files)} watcher configuration files")
             
             # Validate all configs
             for config_file in config_files:
                 result = manager.validate_config(config_file)
                 if result['errors']:
-                    print(f"❌ Validation errors in {config_file.name}:")
+                    print(f"[ERROR] Validation errors in {config_file.name}:")
                     for error in result['errors']:
                         print(f"  - {error}")
                 else:
-                    print(f"✅ {config_file.name} is valid")
+                    print(f"[OK] {config_file.name} is valid")
             
             # Test API connectivity for first config
             if config_files:
                 print("\nTesting API connectivity...")
                 success = manager.test_api_connectivity(config_files[0])
                 if success:
-                    print("✅ API connectivity test passed")
+                    print("[OK] API connectivity test passed")
                 else:
-                    print("❌ API connectivity test failed")
+                    print("[ERROR] API connectivity test failed")
         
         except Exception as e:
-            print(f"❌ Failed to create configurations: {e}")
+            print(f"[ERROR] Failed to create configurations: {e}")
             sys.exit(1)
 
 
