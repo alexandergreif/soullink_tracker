@@ -76,11 +76,21 @@ def main():
         print("ERROR: API import test failed - build may not work correctly")
         # Continue anyway but warn user
     
-    # Clean dist directory
+    # Detect debug mode early
+    debug_mode = '--debug' in sys.argv or os.getenv('SOULLINK_BUILD_DEBUG')
+    
+    # Clean dist directory (but preserve other builds in CI)
     dist_dir = project_root / "dist"
-    if dist_dir.exists():
+    
+    # Only clean if it's not a debug build or if we're starting fresh
+    if dist_dir.exists() and not debug_mode:
         shutil.rmtree(dist_dir)
         print("Cleaned dist directory")
+    elif not dist_dir.exists():
+        dist_dir.mkdir()
+        print("Created dist directory")
+    else:
+        print("Preserving existing dist directory for debug build")
     
     # Determine executable name
     exe_name = "soullink-tracker"
@@ -170,8 +180,6 @@ def main():
     ]
     
     # Platform specific options - allow debug mode to show console
-    debug_mode = '--debug' in sys.argv or os.getenv('SOULLINK_BUILD_DEBUG')
-    
     if not debug_mode:
         if platform.system() == "Windows":
             cmd.extend(["--windowed"])
