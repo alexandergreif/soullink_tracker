@@ -50,7 +50,7 @@ jobs:
           python -c "import uvicorn; print(f'Uvicorn: {uvicorn.__version__}')"
           python -c "import sqlalchemy; print(f'SQLAlchemy: {sqlalchemy.__version__}')"
           python -c "import PyInstaller; print(f'PyInstaller: {PyInstaller.__version__}')"
-          echo "All critical dependencies verified ✅"
+          echo "All critical dependencies verified [OK]"
 
       - name: Test basic imports
         run: |
@@ -60,7 +60,7 @@ jobs:
           sys.path.insert(0, str(Path('src')))
           from soullink_tracker.launcher import SoulLinkLauncher
           from soullink_tracker.config import get_config
-          print('✅ All imports successful')
+          print('[OK] All imports successful')
           "
 
       - name: Create version info
@@ -158,7 +158,7 @@ jobs:
           
           For more information, see README.md
           
-          Enjoy your SoulLink run! 🔗
+          Enjoy your SoulLink run!
           EOF
           
           # Create archive using PowerShell
@@ -224,7 +224,7 @@ jobs:
           cat > RELEASE_NOTES.md << EOF
           # SoulLink Tracker Portable Edition ${VERSION}
           
-          ## 🚀 What's New
+          ## What's New
           
           This is the portable edition of SoulLink Tracker - no installation required!
           
@@ -260,9 +260,9 @@ jobs:
           
           ### Support
           
-          - 📖 [Documentation](https://github.com/alex/soullink-tracker)
-          - 🐛 [Report Issues](https://github.com/alex/soullink-tracker/issues)
-          - 💬 [Discussions](https://github.com/alex/soullink-tracker/discussions)
+          - [Documentation](https://github.com/alex/soullink-tracker)
+          - [Report Issues](https://github.com/alex/soullink-tracker/issues)
+          - [Discussions](https://github.com/alex/soullink-tracker/discussions)
           
           ---
           
@@ -290,6 +290,6 @@ jobs:
     steps:
       - name: Success notification
         run: |
-          echo "🎉 SoulLink Tracker Portable Edition released successfully!"
-          echo "📦 Release: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
-          echo "🔗 Check: https://github.com/${{ github.repository }}/releases"
+          echo "[SUCCESS] SoulLink Tracker Portable Edition released successfully!"
+          echo "[RELEASE] Release: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}"
+          echo "[LINK] Check: https://github.com/${{ github.repository }}/releases"

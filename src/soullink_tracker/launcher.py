@@ -338,7 +338,7 @@ class SoulLinkLauncher:
     def show_startup_info(self):
         """Show startup information to the user."""
         print("\n" + "="*60)
-        print("🔗 SoulLink Tracker - Portable Edition")
+        print("SoulLink Tracker - Portable Edition")
         print("="*60)
         print(f"Server running at: http://127.0.0.1:{self.port}")
         print(f"Dashboard: http://127.0.0.1:{self.port}/dashboard")
@@ -388,13 +388,13 @@ class SoulLinkLauncher:
             
             # Check dependencies
             if not self.check_dependencies():
-                print("❌ Dependency check failed. Please check the logs.")
+                print("[ERROR] Dependency check failed. Please check the logs.")
                 return 1
                 
             # Find available port
             self.port = self.find_available_port()
             if self.port is None:
-                print("❌ No available ports found. Please close other applications and try again.")
+                print("[ERROR] No available ports found. Please close other applications and try again.")
                 return 1
                 
             # Setup environment
@@ -406,7 +406,7 @@ class SoulLinkLauncher:
             
             # Start server
             if not self.start_server(self.port):
-                print("❌ Failed to start server. Please check the logs.")
+                print("[ERROR] Failed to start server. Please check the logs.")
                 return 1
                 
             # Start browser
@@ -425,7 +425,7 @@ class SoulLinkLauncher:
             
         except Exception as e:
             logging.error(f"Unexpected error: {e}")
-            print(f"❌ Unexpected error: {e}")
+            print(f"[ERROR] Unexpected error: {e}")
             return 1
         finally:
             self.shutdown()

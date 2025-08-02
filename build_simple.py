@@ -41,10 +41,10 @@ def test_api_imports():
             print(f"  ERROR {module}: {e}")
             failed_imports.append((module, str(e)))
         except Exception as e:
-            print(f"  ⚠️ {module}: {e}")
+            print(f"  [WARNING] {module}: {e}")
             
     if failed_imports:
-        print(f"\n⚠️ Warning: {len(failed_imports)} API modules failed to import")
+        print(f"\n[WARNING] Warning: {len(failed_imports)} API modules failed to import")
         for module, error in failed_imports:
             print(f"  - {module}: {error}")
         return False
@@ -160,7 +160,7 @@ def main():
     
     try:
         # Test basic imports first
-        print("📋 Testing basic imports...")
+        print("[INFO] Testing basic imports...")
         test_imports = [
             "fastapi", "uvicorn", "sqlalchemy", "pydantic", 
             "websockets", "cryptography", "passlib"
@@ -174,7 +174,7 @@ def main():
                 return 1
 
         # Run PyInstaller
-        print("\n🔨 Building executable...")
+        print("\n[INFO] Building executable...")
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print("PyInstaller completed successfully")
         
@@ -185,7 +185,7 @@ def main():
             important_lines = [line for line in lines if any(keyword in line.lower() 
                              for keyword in ['warning', 'error', 'missing', 'failed', 'building'])]
             if important_lines:
-                print("\n📊 Important build messages:")
+                print("\n[INFO] Important build messages:")
                 for line in important_lines[-10:]:  # Last 10 important lines
                     print(f"  {line}")
             
@@ -194,13 +194,13 @@ def main():
         
         # Show detailed error information
         if e.stdout:
-            print("\n📤 STDOUT (last 1500 chars):")
+            print("\n[STDOUT] STDOUT (last 1500 chars):")
             print("-" * 50)
             print(e.stdout[-1500:])
             print("-" * 50)
             
         if e.stderr:
-            print("\n📥 STDERR (last 1500 chars):")
+            print("\n[STDERR] STDERR (last 1500 chars):")
             print("-" * 50)
             print(e.stderr[-1500:])
             print("-" * 50)
@@ -208,11 +208,11 @@ def main():
         # Look for specific error patterns
         combined_output = (e.stdout or '') + (e.stderr or '')
         if 'ModuleNotFoundError' in combined_output:
-            print("\n💡 Tip: Missing module error detected. Check hidden imports.")
+            print("\n[TIP] Tip: Missing module error detected. Check hidden imports.")
         if 'ImportError' in combined_output:
-            print("💡 Tip: Import error detected. Verify all dependencies are installed.")
+            print("[TIP] Tip: Import error detected. Verify all dependencies are installed.")
         if 'permission' in combined_output.lower():
-            print("💡 Tip: Permission error detected. Check file/directory permissions.")
+            print("[TIP] Tip: Permission error detected. Check file/directory permissions.")
             
         return 1
     
