@@ -37,7 +37,16 @@
       "Bash(git add:*)",
       "Bash(git push:*)",
       "Bash(git tag:*)",
-      "mcp__RepoPrompt__read_selected_files"
+      "mcp__RepoPrompt__read_selected_files",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(pipx install:*)",
+      "Bash(touch:*)",
+      "Bash(python -m pytest tests/unit/test_api_events.py -k \"test_encounter_event_success or test_event_unauthorized or test_event_wrong_player\" --tb=short -v)",
+      "Bash(python -m pytest tests/unit/test_middleware.py -v --tb=short)",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "Bash(python -m pytest \"tests/integration/test_projection_engine.py::TestProjectionEngineCorrectness::test_rebuild_projections_matches_direct_application\" -xvs)",
+      "Bash(python -m pytest tests/integration/test_projection_graceful_errors.py -xvs --tb=long)"
     ],
     "deny": []
   }

@@ -16,11 +16,11 @@ local PLAYER_CONFIG = {
     region = "EU",                     -- CHANGE THIS: "US", "EU", "JP" based on ROM region
     
     -- API Connection
-    api_base_url = "http://127.0.0.1:9000",  -- SoulLink Tracker API URL
+    api_base_url = "{{API_URL}}",  -- SoulLink Tracker API URL (auto-configured)
     player_token = "your-jwt-token-here",     -- CHANGE THIS: Get from database init script
     
     -- File System Paths
-    output_dir = "C:/temp/soullink_events/",  -- CHANGE THIS: Directory for event files
+    output_dir = [[{{SPOOL_DIR}}]],  -- Directory for event files (auto-configured)
     log_file = "C:/temp/soullink.log",        -- CHANGE THIS: Log file path
     
     -- Performance Settings

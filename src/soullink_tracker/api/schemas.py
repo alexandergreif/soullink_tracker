@@ -13,27 +13,39 @@ from ..core.enums import EncounterMethod, EncounterStatus, RodKind, GameVersion,
 # Base response models
 class BaseResponse(BaseModel):
     """Base response model with common fields."""
+
     model_config = ConfigDict(from_attributes=True)
 
 
 class ProblemDetails(BaseModel):
-    """RFC 7807 Problem Details for HTTP APIs."""
+    """RFC 9457 Problem Details for HTTP APIs."""
+
     type: str = Field(description="A URI reference that identifies the problem type")
-    title: str = Field(description="A short, human-readable summary of the problem type")
+    title: str = Field(
+        description="A short, human-readable summary of the problem type"
+    )
     status: int = Field(description="The HTTP status code")
-    detail: Optional[str] = Field(None, description="A human-readable explanation specific to this occurrence")
-    instance: Optional[str] = Field(None, description="A URI reference that identifies the specific occurrence")
+    detail: Optional[str] = Field(
+        None, description="A human-readable explanation specific to this occurrence"
+    )
+    instance: Optional[str] = Field(
+        None, description="A URI reference that identifies the specific occurrence"
+    )
 
 
 # Run-related schemas
 class RunCreate(BaseModel):
     """Schema for creating a new run."""
+
     name: constr(min_length=1, max_length=255) = Field(description="Name of the run")
-    rules_json: Dict = Field(default_factory=dict, description="Run rules configuration")
+    rules_json: Dict = Field(
+        default_factory=dict, description="Run rules configuration"
+    )
 
 
 class RunResponse(BaseResponse):
     """Schema for run response."""
+
     id: UUID
     name: str
     rules_json: Dict
@@ -42,12 +54,14 @@ class RunResponse(BaseResponse):
 
 class RunListResponse(BaseResponse):
     """Schema for listing runs."""
+
     runs: List[RunResponse]
 
 
 # Player-related schemas
 class PlayerCreate(BaseModel):
     """Schema for creating a new player."""
+
     name: constr(min_length=1, max_length=100) = Field(description="Player name")
     game: GameVersion = Field(description="Game version (HeartGold/SoulSilver)")
     region: Region = Field(description="Game region (EU/US/JP)")
@@ -55,6 +69,7 @@ class PlayerCreate(BaseModel):
 
 class PlayerResponse(BaseResponse):
     """Schema for player response."""
+
     id: UUID
     run_id: UUID
     name: str
@@ -65,17 +80,22 @@ class PlayerResponse(BaseResponse):
 
 class PlayerWithTokenResponse(PlayerResponse):
     """Schema for player response including token (only returned once)."""
-    player_token: str = Field(description="Bearer token for this player (shown only once)")
+
+    player_token: str = Field(
+        description="Bearer token for this player (shown only once)"
+    )
 
 
 class PlayerListResponse(BaseResponse):
     """Schema for listing players."""
+
     players: List[PlayerResponse]
 
 
 # Event-related schemas
 class EventEncounter(BaseModel):
     """Schema for encounter event."""
+
     type: str = Field("encounter", description="Event type")
     run_id: UUID
     player_id: UUID
@@ -90,16 +110,18 @@ class EventEncounter(BaseModel):
 
 class EventCatchResult(BaseModel):
     """Schema for catch result event."""
+
     type: str = Field("catch_result", description="Event type")
     run_id: UUID
     player_id: UUID
     time: datetime
-    encounter_id: UUID
+    encounter_id: UUID = Field(description="Required reference to the encounter event")
     result: EncounterStatus = Field(description="Result of the catch attempt")
 
 
 class EventFaint(BaseModel):
     """Schema for faint event."""
+
     type: str = Field("faint", description="Event type")
     run_id: UUID
     player_id: UUID
@@ -109,14 +131,19 @@ class EventFaint(BaseModel):
 
 class EventResponse(BaseResponse):
     """Schema for event processing response."""
+
     message: str = Field("Event processed successfully")
     event_id: Optional[UUID] = None
-    applied_rules: List[str] = Field(default_factory=list, description="Rules that were applied")
+    seq: Optional[int] = Field(None, description="Sequence number for encounter events")
+    applied_rules: List[str] = Field(
+        default_factory=list, description="Rules that were applied"
+    )
 
 
 # Data retrieval schemas
 class EncounterFilter(BaseModel):
     """Schema for filtering encounters."""
+
     player_id: Optional[UUID] = None
     route_id: Optional[int] = None
     species_id: Optional[int] = None
@@ -130,6 +157,7 @@ class EncounterFilter(BaseModel):
 
 class EncounterResponse(BaseResponse):
     """Schema for encounter response."""
+
     id: UUID
     run_id: UUID
     player_id: UUID
@@ -144,7 +172,7 @@ class EncounterResponse(BaseResponse):
     status: str
     dupes_skip: bool
     fe_finalized: bool
-    
+
     # Related data
     player_name: str
     route_label: str
@@ -153,6 +181,7 @@ class EncounterResponse(BaseResponse):
 
 class EncounterListResponse(BaseResponse):
     """Schema for listing encounters."""
+
     encounters: List[EncounterResponse]
     total: int = Field(description="Total number of encounters matching filter")
     limit: int
@@ -161,19 +190,24 @@ class EncounterListResponse(BaseResponse):
 
 class BlocklistEntry(BaseResponse):
     """Schema for blocklist entry."""
+
     family_id: int
-    origin: str = Field(description="How this family was blocked (first_encounter or caught)")
+    origin: str = Field(
+        description="How this family was blocked (first_encounter or caught)"
+    )
     created_at: datetime
     species_names: List[str] = Field(description="Names of species in this family")
 
 
 class BlocklistResponse(BaseResponse):
     """Schema for blocklist response."""
+
     blocked_families: List[BlocklistEntry]
 
 
 class LinkMemberResponse(BaseResponse):
     """Schema for link member response."""
+
     player_id: UUID
     player_name: str
     encounter_id: UUID
@@ -186,6 +220,7 @@ class LinkMemberResponse(BaseResponse):
 
 class LinkResponse(BaseResponse):
     """Schema for soul link response."""
+
     id: UUID
     route_id: int
     route_label: str
@@ -194,11 +229,13 @@ class LinkResponse(BaseResponse):
 
 class LinkListResponse(BaseResponse):
     """Schema for listing soul links."""
+
     links: List[LinkResponse]
 
 
 class RouteStatusEntry(BaseResponse):
     """Schema for route status entry."""
+
     route_id: int
     route_label: str
     players_status: Dict[str, Optional[str]] = Field(
@@ -208,21 +245,44 @@ class RouteStatusEntry(BaseResponse):
 
 class RouteStatusResponse(BaseResponse):
     """Schema for route status matrix."""
+
     routes: List[RouteStatusEntry]
 
 
 # WebSocket schemas
 class WebSocketEvent(BaseModel):
     """Schema for WebSocket events."""
+
     type: str = Field(description="Event type")
     run_id: UUID
     timestamp: datetime
     data: Dict = Field(description="Event-specific data")
 
 
+class EventCatchUpEntry(BaseModel):
+    """Schema for individual event in catch-up response."""
+
+    event_id: UUID
+    seq: int = Field(description="Sequence number")
+    type: str = Field(description="Event type")
+    timestamp: datetime
+    player_id: UUID
+    data: Dict = Field(description="Event payload data")
+
+
+class EventCatchUpResponse(BaseResponse):
+    """Schema for catch-up events response."""
+
+    events: List[EventCatchUpEntry]
+    total: int = Field(description="Total number of events returned")
+    latest_seq: int = Field(description="Latest sequence number in this run")
+    has_more: bool = Field(description="Whether there are more events beyond the limit")
+
+
 # Health and info schemas
 class HealthResponse(BaseResponse):
     """Schema for health check response."""
+
     status: str = "healthy"
     service: str = "soullink-tracker"
     version: str

@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Pokemon SoulLink HG/SS Tracker - Claude Project Context
 
 ## Project Overview
@@ -36,25 +40,51 @@ This is a **3-player Pokemon SoulLink tracker** for randomized HeartGold/SoulSil
 
 ### Commands to Know
 ```bash
-# Run tests
-pytest
+# TDD Workflow with Quality Gates (Recommended)
+pytest                    # 1. Run failing test first
+ruff check src/          # 2. Check code style before implementing
+# 3. Implement feature
+ruff format src/         # 4. Format code after implementation
+mypy src/               # 5. Type check
+pytest                  # 6. Verify test passes
 
-# Run tests with coverage
-pytest --cov=src --cov-report=html
+# Individual Commands
+pytest                   # Run tests
+pytest --cov=src --cov-report=html  # Run tests with coverage
+pytest tests/e2e/ --headed          # Run Playwright tests
 
-# Run Playwright tests
-pytest tests/e2e/ --headed
+# Quality Checks (run before every commit)
+ruff check src/          # Lint checking
+ruff format src/         # Code formatting
+mypy src/               # Type checking
 
-# Start development server
-uvicorn app.main:app --reload --host 127.0.0.1 --port 9000
+# Full quality check (run before PR/merge)
+ruff check src/ && ruff format src/ && mypy src/ && pytest
 
-# Run linting
-ruff check src/
-ruff format src/
+# Development server
+uvicorn src.soullink_tracker.main:app --reload --host 127.0.0.1 --port 8000
 
-# Type checking  
-mypy src/
+# Build portable executable
+python build_simple.py
+
+# Run portable version
+python soullink_portable.py
+python soullink_portable.py --debug
+
+# Pre-commit Setup (Automated Quality Gates)
+pip install pre-commit      # Install pre-commit
+pre-commit install          # Setup git hooks
+pre-commit run --all-files  # Run on all files manually
 ```
+
+### Pre-commit Hooks (Automated Quality)
+The project uses pre-commit hooks to automatically run quality checks before commits:
+- **ruff check + format** - Code linting and formatting
+- **mypy** - Type checking
+- **pytest unit tests** - Fast unit tests only
+- **File checks** - Trailing whitespace, file endings, YAML/JSON validation
+
+Hooks run automatically on `git commit`. To bypass (not recommended): `git commit --no-verify`
 
 ### Documentation Sources
 - Always use **Ref MCP server** before implementing to get latest docs
@@ -62,16 +92,21 @@ mypy src/
 - Playwright Python: https://playwright.dev/python/docs/intro
 - SQLite WAL mode for concurrent access
 - Use **repoprompt** for token optimization and structured prompts
+- Use **repoprompt** for complex planning tasks where we need advanced reasoning
 
 ### File Structure
 ```
 src/
-├── api/           # FastAPI routes and endpoints
-├── core/          # Core business logic and rules engine  
-├── db/            # Database models and migrations
-├── events/        # Event processing and WebSocket handling
-├── auth/          # Authentication and token management
-└── utils/         # Shared utilities
+└── soullink_tracker/
+    ├── main.py          # FastAPI app entry point
+    ├── config.py        # Auto-configuration management
+    ├── launcher.py      # Portable mode launcher
+    ├── api/            # FastAPI routes and endpoints
+    ├── core/           # Core business logic and rules engine  
+    ├── db/             # Database models and migrations
+    ├── events/         # Event processing and WebSocket handling
+    ├── auth/           # Authentication and token management
+    └── utils/          # Shared utilities
 
 tests/
 ├── unit/          # Unit tests
@@ -79,8 +114,10 @@ tests/
 └── e2e/           # End-to-end Playwright tests
 
 client/
-├── lua/           # DeSmuME Lua scripts
-└── watcher/       # Python event watchers
+└── lua/           # DeSmuME Lua scripts
+
+web/               # Static web dashboard
+data/              # CSV data files (routes, species)
 ```
 
 ## Event Types & Data Models
@@ -155,22 +192,57 @@ client/
 - OpenAPI 3.1 specification
 - Proper HTTP status codes (202, 429, 413, 401, 403)
 
+## Configuration Management
+
+The project uses auto-configuration via `src/soullink_tracker/config.py`:
+- **Development Mode**: Auto-detected when running from source
+- **Portable Mode**: Auto-detected when compiled as executable
+- Environment variables: `SOULLINK_PORTABLE`, `SOULLINK_DEBUG`, `SOULLINK_*_DIR`
+- Config file: `data/config.json` (auto-created)
+
+## Testing Strategy
+
+### pytest Configuration
+- Test markers: `unit`, `integration`, `e2e`, `slow`, `api`, `db`, `ws`
+- Coverage requirement: ≥90% (`--cov-fail-under=90`)
+- Async test support via `pytest-asyncio`
+
+### Test Structure
+- `tests/conftest.py`: Shared fixtures including test database, test client
+- `tests/unit/`: Fast unit tests for individual modules  
+- `tests/integration/`: API integration tests
+- `tests/e2e/`: Playwright browser tests
+
+### Key Testing Patterns
+```python
+# API endpoint testing with auth
+def test_api_endpoint(client, sample_data):
+    token = create_access_token(player_id)
+    response = client.post("/v1/events", 
+        json=event_data,
+        headers={"Authorization": f"Bearer {token}"})
+
+# WebSocket testing
+async def test_websocket(async_client):
+    async with async_client.websocket_connect("/v1/ws") as websocket:
+        await websocket.send_json(data)
+```
+
 ## Deployment Notes
 
 ### Development Setup
 ```bash
-# Install Cloudflare tunnel
-# Download cloudflared.exe for Windows
-
-# Start tunnel (generates random *.trycloudflare.com URL)
-cloudflared tunnel --url http://127.0.0.1:9000
-
 # Start FastAPI server
-uvicorn app.main:app --host 127.0.0.1 --port 9000
+uvicorn src.soullink_tracker.main:app --host 127.0.0.1 --port 8000
 
-# SQLite WAL mode setup
-# Add to database init: PRAGMA journal_mode=WAL;
+# Setup Cloudflare tunnel (generates random *.trycloudflare.com URL)
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
+
+### Portable Build
+- Entry point: `soullink_portable.py`
+- Build script: `build_simple.py` (GitHub Actions compatible)
+- Creates standalone executable with embedded web assets
 
 ### Idempotency & Reliability
 - All POST endpoints require Idempotency-Key (UUIDv4)
@@ -187,6 +259,55 @@ uvicorn app.main:app --host 127.0.0.1 --port 9000
 5. **Run linting/typecheck** before committing any code
 6. **Test coverage** must be maintained at ≥90%
 
+## Project Roadmap & Active Development
+
+### Current Version: v2.x (Portable)
+The project is actively being developed with major architectural improvements planned for v3:
+
+### v3-alpha Milestone (Event-Driven Architecture)
+**Key initiatives from `new_features_and_issues.md`:**
+
+1. **Event Store Architecture** (Issue 1)
+   - Append-only `events` table with projections (`route_progress`, `blocklist`)
+   - Domain-driven design with typed contracts in `domain/events.py`
+   - Feature flag: `FEATURE_V3_EVENTSTORE`
+   - Admin rebuild endpoint for deterministic state reconstruction
+
+2. **Hardened API Contracts** (Issue 2)
+   - Idempotency-Key headers (UUID v4) with database persistence
+   - Event ID + sequence number returns for encounter events
+   - RFC 9457 Problem Details error format
+   - Request size limits (16KB body, 100 events/64KB batches)
+
+3. **WebSocket Real-time System** (Issue 3)
+   - Per-run WebSocket rooms with sequence-based broadcasting
+   - Catch-up via REST: `GET /v1/events?since_seq=...`
+   - Heartbeat/ping and clean connection handling
+
+4. **Secure Player Token System** (Issue 4)
+   - SHA-256 + salt token hashing (no plaintext storage)
+   - One-time token display during creation
+   - Token rotation with invalidation of old connections
+   - Admin endpoints: `POST /v1/runs/{run_id}/players`
+
+5. **Production Watcher** (Issue 5)
+   - Spool queue with retry policy (exponential backoff + jitter)
+   - Persistent idempotency keys per record
+   - CLI: `--base-url`, `--from-file fixtures.ndjson`, `--dev`
+   - Windows spool directory: `C:\ProgramData\SoulLinkWatcher\spool\`
+
+### Development & Testing Tools
+- **Fixtures & Simulator** (Issue 6): NDJSON test data for encounter scenarios
+- **Rule Engine** (Issue 7): Pure functions with property-based tests (Hypothesis)
+- **Database Constraints** (Issue 8): Race condition prevention via unique constraints
+- **Admin Dashboard** (Issue 9): Health/ready endpoints, rebuild functionality
+
+### Key Architectural Patterns
+- **Event Sourcing**: All state changes recorded as immutable events
+- **CQRS**: Command/Query separation with projections for read models
+- **Idempotency**: All operations safe to retry via persistent keys
+- **Domain-Driven Design**: Core business logic isolated in `domain/` layer
+
 ## Important Notes
 - EU region Pokemon HG/SS ROM required for Lua script calibration
 - DeSmuME Lua scripting + RAM Watch/Search for encounter detection
@@ -194,3 +315,4 @@ uvicorn app.main:app --host 127.0.0.1 --port 9000
 - CORS middleware only needed if UI served from different origin
 - All timestamps in ISO 8601 UTC format
 - Event processing is idempotent and supports retries
+- use repoprompt to read and write files for better token usage.

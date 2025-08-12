@@ -1,56 +1,71 @@
 """Security utilities for authentication."""
 
-import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+import hashlib
+import secrets
+from typing import Tuple
 
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
-
-# Secret key for JWT - in production, use environment variable
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 1 week
 
 
-def create_access_token(player_id: str, expires_delta: Optional[timedelta] = None):
-    """Create a JWT access token for a player."""
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    
-    to_encode = {
-        "sub": player_id,
-        "exp": expire
-    }
-    
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-
-def verify_token(token: str) -> str:
+def generate_secure_token() -> Tuple[str, str]:
     """
-    Verify a JWT token and return the player ID.
-    
-    Raises HTTPException if token is invalid or expired.
+    Generate a secure bearer token and its SHA-256 hash.
+
+    Returns:
+        Tuple[str, str]: (token, token_hash) where token is the plain token
+        and token_hash is the SHA-256 hex digest for storage.
     """
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        player_id: str = payload.get("sub")
-        
-        if player_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: no player ID",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        return player_id
-        
-    except JWTError as e:
+    # Generate cryptographically secure token
+    token = secrets.token_urlsafe(32)
+
+    # Create SHA-256 hash for storage (no salt needed for local security per spec)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    return token, token_hash
+
+
+def verify_bearer_token(token: str, stored_token_hash: str) -> bool:
+    """
+    Verify a bearer token against a stored hash.
+
+    Args:
+        token: The plain token to verify
+        stored_token_hash: The SHA-256 hash stored in the database
+
+    Returns:
+        bool: True if token is valid, False otherwise
+    """
+    if not token or not stored_token_hash:
+        return False
+
+    # Hash the provided token
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    # Use secure comparison to prevent timing attacks
+    return secrets.compare_digest(token_hash, stored_token_hash)
+
+
+def validate_bearer_token_format(token: str) -> None:
+    """
+    Validate that a token has the expected format.
+
+    Args:
+        token: The token to validate
+
+    Raises:
+        HTTPException: If token format is invalid
+    """
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail="Token cannot be empty",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Basic length check (token_urlsafe(32) produces ~43 character tokens)
+    if len(token) < 20:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token format",
             headers={"WWW-Authenticate": "Bearer"},
         )

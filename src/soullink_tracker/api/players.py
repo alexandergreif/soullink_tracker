@@ -1,82 +1,86 @@
 """Player management API endpoints."""
 
-from typing import List
+from typing import Dict, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from ..db.database import get_db
 from ..db.models import Run, Player
-from .schemas import (
-    PlayerCreate, PlayerResponse, PlayerWithTokenResponse, 
-    PlayerListResponse, ProblemDetails
-)
+from ..auth.dependencies import get_current_player
+from .middleware import ProblemDetailsException
+from .schemas import PlayerResponse, PlayerListResponse, ProblemDetails
 
 router = APIRouter(tags=["players"])
 
 
 @router.post(
-    "/v1/runs/{run_id}/players",
-    response_model=PlayerWithTokenResponse,
-    status_code=status.HTTP_201_CREATED,
+    "/v1/players/{player_id}/rotate-token",
+    status_code=status.HTTP_200_OK,
     responses={
-        201: {"description": "Player created successfully with token"},
-        404: {"model": ProblemDetails, "description": "Run not found"},
-        409: {"model": ProblemDetails, "description": "Player name already exists in this run"},
-        422: {"model": ProblemDetails, "description": "Validation error"}
-    }
+        200: {"description": "Token rotated successfully"},
+        401: {"model": ProblemDetails, "description": "Authentication required"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Not authorized to rotate this player's token",
+        },
+        404: {"model": ProblemDetails, "description": "Player not found"},
+    },
 )
-def create_player(
-    run_id: UUID,
-    player_data: PlayerCreate,
-    db: Session = Depends(get_db)
-) -> PlayerWithTokenResponse:
+def rotate_player_token(
+    player_id: UUID,
+    current_player: Player = Depends(get_current_player),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
     """
-    Create a new player in a SoulLink run.
-    
-    This endpoint is typically used by administrators to add players to a run.
-    Returns a player token that should be securely stored by the client - it will
-    not be shown again. The token is used for event authentication.
+    Rotate (regenerate) a player's bearer token.
+
+    This endpoint allows a player to generate a new token, invalidating the old one.
+    **IMPORTANT: The new token is only shown once and cannot be retrieved again.**
+    All existing connections using the old token will be immediately invalidated.
+
+    Players can only rotate their own tokens. The current token must be valid
+    to authorize this operation.
     """
-    # Verify run exists
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(
+    # Verify the target player exists
+    target_player = db.query(Player).filter(Player.id == player_id).first()
+    if not target_player:
+        raise ProblemDetailsException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Run not found"
+            title="Player Not Found",
+            detail=f"Player with ID {player_id} does not exist",
         )
-    
-    # Generate token
-    token, token_hash = Player.generate_token()
-    
-    # Create player
-    player = Player(
-        run_id=run_id,
-        name=player_data.name,
-        game=player_data.game.value,
-        region=player_data.region.value,
-        token_hash=token_hash
-    )
-    
+
+    # Verify authorization - players can only rotate their own tokens
+    if current_player.id != target_player.id:
+        raise ProblemDetailsException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            title="Forbidden",
+            detail="You can only rotate your own token",
+        )
+
     try:
-        db.add(player)
+        # Generate new token and update player
+        new_token = target_player.rotate_token()
+
         db.commit()
-        db.refresh(player)
-    except IntegrityError:
+
+        return {
+            "message": "Token rotated successfully",
+            "player_id": str(target_player.id),
+            "player_name": target_player.name,
+            "new_token": new_token,
+            "warning": "This token will only be displayed once. Store it securely.",
+        }
+
+    except Exception as e:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Player with name '{player_data.name}' already exists in this run"
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail=f"Failed to rotate token: {str(e)}",
         )
-    
-    # Return player data with token
-    player_data = PlayerResponse.model_validate(player)
-    return PlayerWithTokenResponse(
-        **player_data.model_dump(),
-        player_token=token
-    )
 
 
 @router.get(
@@ -85,32 +89,35 @@ def create_player(
     responses={
         200: {"description": "Players retrieved successfully"},
         404: {"model": ProblemDetails, "description": "Run not found"},
-        422: {"model": ProblemDetails, "description": "Invalid run ID format"}
-    }
+        422: {"model": ProblemDetails, "description": "Invalid run ID format"},
+    },
 )
 def get_players_in_run(
-    run_id: UUID,
-    db: Session = Depends(get_db)
+    run_id: UUID, db: Session = Depends(get_db)
 ) -> PlayerListResponse:
     """
     Get all players in a SoulLink run.
-    
+
     Returns a list of all players participating in the specified run.
     Player tokens are NOT included in the response for security reasons.
     """
     # Verify run exists
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
-        raise HTTPException(
+        raise ProblemDetailsException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Run not found"
+            title="Run not found",
+            detail="The specified run does not exist"
         )
-    
+
     # Get players
-    players = db.query(Player).filter(
-        Player.run_id == run_id
-    ).order_by(Player.created_at.asc()).all()
-    
+    players = (
+        db.query(Player)
+        .filter(Player.run_id == run_id)
+        .order_by(Player.created_at.asc())
+        .all()
+    )
+
     return PlayerListResponse(
         players=[PlayerResponse.model_validate(player) for player in players]
     )

@@ -1,7 +1,7 @@
 """Playwright-specific configuration for e2e tests."""
 
 import pytest
-from playwright.async_api import Page, BrowserContext
+from playwright.async_api import Page
 
 @pytest.fixture
 async def authenticated_page(page: Page) -> Page:

@@ -3,12 +3,11 @@
 import pytest
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 from uuid import uuid4
 
 from soullink_tracker.db.models import (
     Run, Player, Species, Route, Encounter, Link, LinkMember, 
-    Blocklist, PartyStatus
+    Blocklist
 )
 from soullink_tracker.core.enums import EncounterMethod, EncounterStatus
 from soullink_tracker.auth.security import create_access_token

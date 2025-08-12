@@ -101,31 +101,59 @@ jobs:
           New-Item -Path "build" -ItemType Directory -Force
           $versionInfo | Out-File -FilePath "build/version_info.txt" -Encoding UTF8
 
-      - name: Build portable executable (Normal)
+      - name: Build admin executables (Normal)
         run: |
-          python build_simple.py
+          python build_dual.py --admin-only
 
-      - name: Build portable executable (Debug - Console Visible)
+      - name: Build admin executables (Debug - Console Visible)
         run: |
-          python build_simple.py --debug
+          python build_dual.py --admin-only --debug
+
+      - name: Build user executables (Normal)
+        run: |
+          python build_dual.py --user-only
+
+      - name: Build user executables (Debug - Console Visible)
+        run: |
+          python build_dual.py --user-only --debug
 
       - name: Test executables
         run: |
-          if (Test-Path "dist/soullink-tracker.exe") {
-            Write-Host "Windows executable built successfully"
-            $size = (Get-Item "dist/soullink-tracker.exe").Length / 1MB
-            Write-Host "Size: $([math]::Round($size, 1)) MB"
+          # Test admin executables
+          if (Test-Path "dist/soullink-tracker-admin.exe") {
+            Write-Host "Admin executable built successfully"
+            $size = (Get-Item "dist/soullink-tracker-admin.exe").Length / 1MB
+            Write-Host "Admin Size: $([math]::Round($size, 1)) MB"
           } else {
-            Write-Error "Windows executable not found"
+            Write-Error "Admin executable not found"
             exit 1
           }
           
-          if (Test-Path "dist/soullink-tracker-debug.exe") {
-            Write-Host "Debug executable built successfully"
-            $size = (Get-Item "dist/soullink-tracker-debug.exe").Length / 1MB
-            Write-Host "Debug Size: $([math]::Round($size, 1)) MB"
+          if (Test-Path "dist/soullink-tracker-admin-debug.exe") {
+            Write-Host "Admin debug executable built successfully"
+            $size = (Get-Item "dist/soullink-tracker-admin-debug.exe").Length / 1MB
+            Write-Host "Admin Debug Size: $([math]::Round($size, 1)) MB"
           } else {
-            Write-Error "Debug executable not found"
+            Write-Error "Admin debug executable not found"
+            exit 1
+          }
+          
+          # Test user executables
+          if (Test-Path "dist/soullink-tracker-user.exe") {
+            Write-Host "User executable built successfully"
+            $size = (Get-Item "dist/soullink-tracker-user.exe").Length / 1MB
+            Write-Host "User Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "User executable not found"
+            exit 1
+          }
+          
+          if (Test-Path "dist/soullink-tracker-user-debug.exe") {
+            Write-Host "User debug executable built successfully"
+            $size = (Get-Item "dist/soullink-tracker-user-debug.exe").Length / 1MB
+            Write-Host "User Debug Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "User debug executable not found"
             exit 1
           }
 
@@ -138,51 +166,95 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
           fi
           
-          # Create package directory
-          PACKAGE_NAME="soullink-tracker-${VERSION}-windows-x64"
-          mkdir -p "packages/${PACKAGE_NAME}"
+          # Create admin package directory
+          ADMIN_PACKAGE_NAME="soullink-tracker-admin-${VERSION}-windows-x64"
+          mkdir -p "packages/${ADMIN_PACKAGE_NAME}"
           
-          # Copy Windows executables (both normal and debug)
-          cp "dist/soullink-tracker.exe" "packages/${PACKAGE_NAME}/"
-          cp "dist/soullink-tracker-debug.exe" "packages/${PACKAGE_NAME}/"
+          # Copy admin executables
+          cp "dist/soullink-tracker-admin.exe" "packages/${ADMIN_PACKAGE_NAME}/"
+          cp "dist/soullink-tracker-admin-debug.exe" "packages/${ADMIN_PACKAGE_NAME}/"
           
-          # Copy documentation
-          cp README.md "packages/${PACKAGE_NAME}/" || true
-          cp LICENSE "packages/${PACKAGE_NAME}/" || true
+          # Create user package directory
+          USER_PACKAGE_NAME="soullink-tracker-user-${VERSION}-windows-x64"
+          mkdir -p "packages/${USER_PACKAGE_NAME}"
           
-          # Create quick start guide
-          cat > "packages/${PACKAGE_NAME}/QUICK_START.txt" << EOF
-          SoulLink Tracker Portable Edition ${VERSION}
-          ================================================
+          # Copy user executables
+          cp "dist/soullink-tracker-user.exe" "packages/${USER_PACKAGE_NAME}/"
+          cp "dist/soullink-tracker-user-debug.exe" "packages/${USER_PACKAGE_NAME}/"
+          
+          # Copy documentation to both packages
+          cp README.md "packages/${ADMIN_PACKAGE_NAME}/" || true
+          cp LICENSE "packages/${ADMIN_PACKAGE_NAME}/" || true
+          cp README.md "packages/${USER_PACKAGE_NAME}/" || true
+          cp LICENSE "packages/${USER_PACKAGE_NAME}/" || true
+          
+          # Create admin quick start guide
+          cat > "packages/${ADMIN_PACKAGE_NAME}/QUICK_START_ADMIN.txt" << EOF
+          SoulLink Tracker Admin Edition ${VERSION}
+          ==========================================
+          
+          FOR ADMINISTRATORS/HOSTS:
+          This is the admin version that runs the server and dashboard.
           
           Quick Start:
           1. Extract this package to any folder
           2. Run the executable:
-             - Windows (Normal): Double-click soullink-tracker.exe
-             - Windows (Debug): Double-click soullink-tracker-debug.exe
-          3. Your browser will open automatically
-          4. Follow the setup wizard
-          
-          Troubleshooting:
-          If the normal version doesn't work:
-          1. Try the debug version (soullink-tracker-debug.exe)
-          2. Debug version shows console output for troubleshooting
-          3. Check log files created in logs/ directory
-          4. If antivirus blocks it, add to whitelist
+             - Windows (Normal): Double-click soullink-tracker-admin.exe
+             - Windows (Debug): Double-click soullink-tracker-admin-debug.exe
+          3. Your browser will open automatically to the dashboard
+          4. Create a new run and add players
+          5. Share API URL and player tokens with participants
           
           Features:
           - Zero installation required
-          - Automatic browser launching  
-          - Built-in setup wizard
-          - Comprehensive logging for debugging
+          - Built-in web dashboard
+          - Real-time tracking via WebSocket
+          - Automatic database setup
+          
+          Troubleshooting:
+          - Use debug version for console output
+          - Check logs/ directory for detailed logs
+          - Add to antivirus whitelist if blocked
           
           For more information, see README.md
-          
-          Enjoy your SoulLink run!
           EOF
           
-          # Create troubleshooting guide for antivirus issues
-          cat > "packages/${PACKAGE_NAME}/ANTIVIRUS_TROUBLESHOOTING.txt" << EOF
+          # Create user quick start guide
+          cat > "packages/${USER_PACKAGE_NAME}/QUICK_START_USER.txt" << EOF
+          SoulLink Tracker User Edition ${VERSION}
+          =========================================
+          
+          FOR PLAYERS:
+          This is the user version that connects to the admin server.
+          
+          Quick Start:
+          1. Extract this package to any folder
+          2. Get API URL and player token from your admin
+          3. Run the executable:
+             - Windows (Normal): Double-click soullink-tracker-user.exe
+             - Windows (Debug): Double-click soullink-tracker-user-debug.exe
+          4. The Lua folder will open automatically
+          5. Load pokemon_tracker_v3.lua in your DeSmuME emulator
+          6. Configure config.lua with your API URL if needed
+          
+          Features:
+          - Zero installation required
+          - Automatic Lua script setup
+          - Built-in watcher for event processing
+          - System tray icon for easy access
+          
+          Troubleshooting:
+          - Use debug version for console output
+          - Check logs_user/ directory for logs
+          - Ensure admin server is running
+          - Add to antivirus whitelist if blocked
+          
+          For emulator setup, see client/README.md
+          EOF
+          
+          # Create troubleshooting guide for both packages
+          for PACKAGE in "${ADMIN_PACKAGE_NAME}" "${USER_PACKAGE_NAME}"; do
+            cat > "packages/${PACKAGE}/ANTIVIRUS_TROUBLESHOOTING.txt" << EOF
           SoulLink Tracker - Antivirus Troubleshooting Guide
           ==================================================
           
@@ -218,33 +290,51 @@ jobs:
           
           This is a legitimate application and safe to run.
           EOF
+          done
           
-          # Create archive using PowerShell
+          # Create archives using PowerShell
           cd packages
-          powershell -Command "Compress-Archive -Path '${PACKAGE_NAME}' -DestinationPath '${PACKAGE_NAME}.zip'"
+          powershell -Command "Compress-Archive -Path '${ADMIN_PACKAGE_NAME}' -DestinationPath '${ADMIN_PACKAGE_NAME}.zip'"
+          powershell -Command "Compress-Archive -Path '${USER_PACKAGE_NAME}' -DestinationPath '${USER_PACKAGE_NAME}.zip'"
           cd ..
           
-          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "ADMIN_PACKAGE_NAME=${ADMIN_PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "USER_PACKAGE_NAME=${USER_PACKAGE_NAME}" >> $GITHUB_ENV
         shell: bash
 
       - name: Generate checksums
         run: |
           cd packages
-          powershell -Command "Get-FileHash '${PACKAGE_NAME}.zip' -Algorithm SHA256 | Format-List Hash | Out-String" > "${PACKAGE_NAME}.zip.sha256"
+          powershell -Command "Get-FileHash '${ADMIN_PACKAGE_NAME}.zip' -Algorithm SHA256 | Format-List Hash | Out-String" > "${ADMIN_PACKAGE_NAME}.zip.sha256"
+          powershell -Command "Get-FileHash '${USER_PACKAGE_NAME}.zip' -Algorithm SHA256 | Format-List Hash | Out-String" > "${USER_PACKAGE_NAME}.zip.sha256"
           cd ..
         shell: bash
 
-      - name: Upload build artifacts
+      - name: Upload admin build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PACKAGE_NAME }}
-          path: packages/${{ env.PACKAGE_NAME }}.zip
+          name: ${{ env.ADMIN_PACKAGE_NAME }}
+          path: packages/${{ env.ADMIN_PACKAGE_NAME }}.zip
           retention-days: 30
 
-      - name: Upload checksums
+      - name: Upload user build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PACKAGE_NAME }}-checksum
+          name: ${{ env.USER_PACKAGE_NAME }}
+          path: packages/${{ env.USER_PACKAGE_NAME }}.zip
+          retention-days: 30
+
+      - name: Upload admin checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ADMIN_PACKAGE_NAME }}-checksum
+          path: packages/${{ env.ADMIN_PACKAGE_NAME }}.zip.sha256
+          retention-days: 30
+
+      - name: Upload user checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.USER_PACKAGE_NAME }}-checksum
           path: packages/${{ env.PACKAGE_NAME }}.zip.sha256
           retention-days: 30
 

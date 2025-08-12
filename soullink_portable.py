@@ -180,7 +180,7 @@ def run_diagnostics():
     print("\nLogging System:")
     try:
         from soullink_tracker.portable_logger import setup_portable_logging
-        logger = setup_portable_logging(debug=True)
+        logger = setup_portable_logging(debug=True, role="admin")
         logger.create_diagnostic_dump()
         print("  [OK] Logging system initialized")
         print(f"  [OK] Logs directory: {logger.log_dir}")
@@ -234,7 +234,7 @@ def main():
         immediate_startup_log("Initializing portable logging system...")
         try:
             from soullink_tracker.portable_logger import setup_portable_logging
-            logger = setup_portable_logging(debug=debug_mode)
+            logger = setup_portable_logging(debug=debug_mode, role="admin")
             immediate_startup_log(f"Portable logging initialized: {logger.log_dir}")
             print(f"Logging initialized: {logger.log_dir}")
         except Exception as e:

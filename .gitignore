@@ -149,6 +149,23 @@ events_*.ndjson
 client/logs/
 cloudflared.log
 
+# Portable build artifacts
+logs/
+logs_user/
+data_user/
+spool/
+packages/
+*.zip
+*.sha256
+
+# User configuration
+client/lua/config.lua
+
+# Emergency/diagnostic logs
+*_emergency.log
+*_startup_immediate.log
+diagnostic_dump_*.json
+
 # Secrets
 .env.local
 .env.production

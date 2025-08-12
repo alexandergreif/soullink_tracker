@@ -2,9 +2,8 @@
 
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
-from datetime import datetime, timezone
 
 from soullink_tracker.events.websocket_manager import WebSocketManager
 from soullink_tracker.events.schemas import (

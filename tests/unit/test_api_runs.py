@@ -1,8 +1,6 @@
 """Tests for runs API endpoints."""
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 from uuid import uuid4
 
 from soullink_tracker.db.models import Run

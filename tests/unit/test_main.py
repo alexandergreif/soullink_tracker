@@ -11,7 +11,7 @@ def test_app_creation():
     
     assert app is not None
     assert app.title == "SoulLink Tracker"
-    assert app.version == "0.1.0"
+    assert app.version == "3.0.0-dev"
 
 
 @pytest.mark.unit  
@@ -23,8 +23,32 @@ def test_health_endpoint(client: TestClient):
     assert response.json() == {
         "status": "healthy",
         "service": "soullink-tracker",
-        "version": "0.1.0"
+        "version": "3.0.0-dev"
     }
+
+
+@pytest.mark.unit
+def test_ready_endpoint(client: TestClient):
+    """Test the readiness check endpoint."""
+    response = client.get("/ready")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify required fields
+    assert data["status"] == "ready"
+    assert data["service"] == "soullink-tracker"
+    assert "version" in data
+    assert "checks" in data
+    assert "response_time_ms" in data
+    
+    # Verify check results
+    assert data["checks"]["database"] is True
+    assert data["checks"]["config"] is True
+    
+    # Verify response time is reasonable
+    assert isinstance(data["response_time_ms"], (int, float))
+    assert data["response_time_ms"] >= 0
 
 
 @pytest.mark.unit
