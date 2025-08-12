@@ -28,15 +28,55 @@ Automatically tracks Pokemon encounters, catches, faints, and soul links across 
 - 🔒 **Secure**: JWT authentication per player
 - 🪟 **Windows Friendly**: One-click setup for non-technical users
 
+## 🆕 V3 New Features
+
+- 🔀 **Dual Architecture**: Separate admin and user executables
+- 📦 **Zero Installation**: Fully portable, no Python required
+- ⚡ **Optimized Performance**: Lightweight user client, full-featured admin server
+- 🔧 **Auto-Configuration**: User launcher sets up API URLs and directories automatically
+- 📁 **Smart Resource Management**: Role-based logging and data separation
+- 🎯 **System Tray Integration**: Easy access to Lua folder and logs
+- 🛠️ **Enhanced Build System**: Dual GitHub Actions releases
+- 🔒 **Environment-Based Config**: Secure, flexible configuration system
+
 ## 🚀 Quick Start
 
 ### 🪟 Windows Users (Recommended)
 
-**Most users should use this method - no technical knowledge required!**
+**SoulLink Tracker V3 now provides TWO separate applications:**
 
-1. **Download this project**:
-   - Click the green "Code" button above → "Download ZIP"
-   - Extract the ZIP file to your Desktop
+#### 📊 **Admin Version** (For Run Organizers)
+- Runs the server, database, and web dashboard
+- Manages players and run configuration
+- **Download**: `soullink-tracker-admin-v3.0.0-windows-x64.zip`
+
+#### 🎮 **User Version** (For Players)
+- Lightweight client with watcher and Lua scripts
+- Connects to admin's server automatically
+- **Download**: `soullink-tracker-user-v3.0.0-windows-x64.zip`
+
+### Setup Instructions:
+
+#### For Admins (Run Organizers):
+1. **Download** the Admin package from [Releases](https://github.com/alexandergreif/soullink_tracker/releases)
+2. **Extract** the ZIP file to your Desktop
+3. **Run** `soullink-tracker-admin.exe`
+4. **Browser opens** automatically to the dashboard
+5. **Create a run** and add player tokens
+6. **Share** the API URL and tokens with players
+
+#### For Players:
+1. **Download** the User package from [Releases](https://github.com/alexandergreif/soullink_tracker/releases)
+2. **Extract** the ZIP file to your Desktop
+3. **Get** API URL and player token from your admin
+4. **Run** `soullink-tracker-user.exe`
+5. **Lua folder opens** automatically
+6. **Load** `pokemon_tracker_v3.lua` in DeSmuME
+7. **Start playing** - encounters are tracked automatically!
+
+### 🔧 Advanced Setup (Source Code)
+
+**For developers or advanced users who want to run from source:**
 
 2. **For Server Host (Admin)**:
    - Double-click `windows_installer.bat` (installs Python automatically)
@@ -93,30 +133,56 @@ python3 scripts/player_setup.py player_config.json
 
 ## 🎯 How It Works
 
+### V3 Dual-Architecture System
+
 ```
-🎮 Pokemon Game → 📝 Lua Script → 🔄 Python Watcher → 🌐 Web Server → 📊 Dashboard
+📊 ADMIN: FastAPI + SQLite + WebSocket Dashboard
+                    ↑ HTTP/WebSocket API ↓
+🎮 USER: DeSmuME → Lua Script → Watcher → API Server
 ```
 
-1. **🎮 Play Pokemon** normally in DeSmuME
-2. **📝 Lua script** automatically detects encounters, catches, faints
-3. **🔄 Python watcher** sends events to central server
-4. **⚡ Web dashboard** updates in real-time for all players
+#### Admin Side:
+1. **📊 Admin runs** `soullink-tracker-admin.exe`
+2. **🌐 Server starts** with FastAPI + SQLite database
+3. **📊 Dashboard opens** in browser for monitoring
+4. **🗗️ API provides** real-time endpoints for players
+
+#### User Side:
+1. **🎮 Player runs** `soullink-tracker-user.exe`
+2. **📝 Lua script** detects encounters, catches, faints in DeSmuME
+3. **🔄 Watcher** processes events and sends to admin's server
+4. **⚡ Updates appear** instantly on admin's dashboard
 5. **🔗 Soul links** form automatically when players catch on same route
 
-## 🛠️ Project Structure
+## 🛠️ V3 Architecture
 
+### Package Structure:
+```
+📊 Admin Package (soullink-tracker-admin-v3.0.0.zip):
+│
+├── soullink-tracker-admin.exe     # Main server executable
+├── soullink-tracker-admin-debug.exe # Debug version with console
+├── QUICK_START_ADMIN.txt          # Setup instructions
+└── README.md + LICENSE             # Documentation
+
+🎮 User Package (soullink-tracker-user-v3.0.0.zip):
+│
+├── soullink-tracker-user.exe      # Client executable
+├── soullink-tracker-user-debug.exe # Debug version with console
+├── QUICK_START_USER.txt           # Setup instructions
+└── README.md + LICENSE             # Documentation
+```
+
+### Source Code Structure:
 ```
 SoulLink_Tracker/
-├── windows_installer.bat          # 🪟 One-click Windows installer
-├── run_admin_setup.bat            # 🔧 Admin server launcher  
-├── run_player_setup.bat           # 🎮 Player client launcher
-├── WINDOWS_SETUP.md               # 📖 Windows user guide
-├── scripts/                       # 🐍 Python setup scripts
-├── client/                        # 📱 Client components
-│   ├── lua/                       # 🎮 DeSmuME Lua scripts
-│   └── watcher/                   # 🔄 Python event watchers
-├── web/                           # 🌐 Web dashboard
-└── src/                           # ⚙️ Main application
+├── soullink_portable.py           # 📊 Admin entry point
+├── soullink_user_portable.py      # 🎮 User entry point
+├── build_dual.py                  # 🛠️ Builds both packages
+├── client/lua/                    # 📝 DeSmuME Lua scripts
+├── watcher/                       # 🔄 Python watcher components
+├── web/                           # 🌐 Web dashboard (admin only)
+└── src/soullink_tracker/          # ⚙️ Core application logic
 ```
 
 ## 🐛 Troubleshooting
@@ -126,10 +192,22 @@ SoulLink_Tracker/
 - **"Can't connect"**: Check that admin's server is running
 - **"Script not working"**: Make sure you loaded the correct `.lua` file
 
+### V3 Specific Issues
+
+#### Admin Issues:
+- **"Port already in use"**: Another server is running, try debug version to see console
+- **"Database error"**: Check logs/ directory for SQLite issues
+- **"Browser doesn't open"**: Manually go to http://127.0.0.1:8000
+
+#### User Issues:
+- **"Cannot connect to API"**: Make sure admin's server is running and API URL is correct
+- **"Lua folder not opening"**: Run as administrator or check antivirus settings
+- **"Watcher not starting"**: Check logs_user/ directory for error details
+
 ### General Issues
-- **Events not appearing**: Check both DeSmuME and watcher are running
-- **Dashboard not updating**: Verify internet connection and server status
-- **Need help**: Check the logs folder or contact your admin
+- **Events not appearing**: Verify DeSmuME has the Lua script loaded
+- **Dashboard not updating**: Check WebSocket connection in browser dev tools
+- **Antivirus blocking**: Add executables to antivirus whitelist
 
 ### Getting Help
 
