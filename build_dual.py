@@ -150,11 +150,13 @@ def main():
     debug_mode = '--debug' in sys.argv
     admin_only = '--admin-only' in sys.argv
     user_only = '--user-only' in sys.argv
+    no_clean = '--no-clean' in sys.argv
     
     print("SoulLink Tracker - Dual PyInstaller Build Script")
     print(f"Debug mode: {debug_mode}")
     print(f"Admin only: {admin_only}")
     print(f"User only: {user_only}")
+    print(f"Skip cleanup: {no_clean}")
     
     # Verify we're in the right directory
     admin_entry = Path("soullink_portable.py")
@@ -172,12 +174,15 @@ def main():
     dist_dir = Path("dist")
     build_dir = Path("build")
     
-    # Clean up previous builds
-    if dist_dir.exists():
+    # Clean up previous builds (unless --no-clean or building individual targets)
+    should_clean = not no_clean and not (admin_only or user_only)
+    if should_clean and dist_dir.exists():
         print("Cleaning up previous build...")
         shutil.rmtree(dist_dir)
-    if build_dir.exists():
+    if should_clean and build_dir.exists():
         shutil.rmtree(build_dir)
+    elif admin_only or user_only:
+        print("Skipping cleanup for individual target build")
     
     built_executables = []
     
