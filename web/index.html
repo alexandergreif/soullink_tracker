@@ -28,6 +28,64 @@
 
     <main class="main">
         <div class="container">
+            <!-- Admin Setup Section -->
+            <section class="section" id="setupSection" style="display:none;">
+                <h2 class="section-title">Admin Setup</h2>
+                
+                <!-- Create Run -->
+                <div class="setup-card">
+                    <h3>Create New Run</h3>
+                    <form id="createRunForm" class="setup-form">
+                        <div class="form-group">
+                            <label for="runNameInput">Run Name:</label>
+                            <input type="text" id="runNameInput" placeholder="Enter run name..." required>
+                        </div>
+                        <button type="submit" id="createRunBtn" class="btn btn-primary">Create Run</button>
+                    </form>
+                </div>
+                
+                <!-- Select Run -->
+                <div class="setup-card">
+                    <h3>Select Existing Run</h3>
+                    <div class="form-group">
+                        <label for="runSelect">Choose Run:</label>
+                        <select id="runSelect">
+                            <option value="">Loading runs...</option>
+                        </select>
+                        <button type="button" id="openDashboardBtn" class="btn btn-secondary">Open Dashboard</button>
+                    </div>
+                </div>
+                
+                <!-- Add Players -->
+                <div class="setup-card">
+                    <h3>Add Players</h3>
+                    <form id="addPlayerForm" class="setup-form" style="opacity:0.5;pointer-events:none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="playerNameInput">Player Name:</label>
+                                <input type="text" id="playerNameInput" placeholder="Enter player name..." disabled required>
+                            </div>
+                            <div class="form-group">
+                                <label for="playerGameSelect">Game:</label>
+                                <select id="playerGameSelect" disabled>
+                                    <option value="HeartGold">HeartGold</option>
+                                    <option value="SoulSilver">SoulSilver</option>
+                                    <option value="Unknown">Unknown</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="playerRegionInput">Region (optional):</label>
+                                <input type="text" id="playerRegionInput" placeholder="EU, US, JP..." disabled>
+                            </div>
+                        </div>
+                        <button type="submit" id="addPlayerBtn" class="btn btn-primary" disabled>Add Player</button>
+                    </form>
+                    
+                    <!-- Players List -->
+                    <div id="tokensList" class="tokens-list"></div>
+                </div>
+            </section>
+            
             <!-- Run Overview -->
             <section class="section">
                 <h2 class="section-title">Run Overview</h2>
@@ -135,6 +193,19 @@
         </div>
     </div>
 
+    <!-- Token Modal -->
+    <div class="modal" id="tokenModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Player Token</h3>
+                <button class="modal-close" id="tokenModalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="tokenModalBody">
+                <!-- Token details will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+
     <footer class="footer">
         <div class="container">
             <p>&copy; 2024 SoulLink Tracker. Made for Pokemon HeartGold/SoulSilver randomizer runs.</p>
@@ -143,6 +214,7 @@
 
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/admin.js"></script>
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

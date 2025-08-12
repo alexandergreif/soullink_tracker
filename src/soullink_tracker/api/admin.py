@@ -3,7 +3,7 @@
 from uuid import UUID
 from typing import Dict, Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db.database import get_db
@@ -21,6 +21,16 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
+
+
+def require_localhost(request: Request):
+    """Dependency to restrict admin endpoints to localhost only."""
+    if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin API only available on localhost"
+        )
+    return True
 
 
 @router.post(
@@ -75,7 +85,11 @@ def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunRespons
     },
 )
 def create_player(
-    run_id: UUID, player_data: PlayerCreate, db: Session = Depends(get_db)
+    run_id: UUID,
+    player_data: PlayerCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
 ) -> PlayerWithTokenResponse:
     """
     Create a new player in a run with secure token generation.
@@ -113,35 +127,23 @@ def create_player(
         # Generate secure token
         token, token_hash = Player.generate_token()
 
-        # Create new player
-        new_player = Player(
-            run_id=run_id,
-            name=player_data.name,
-            game=player_data.game.value
-            if hasattr(player_data.game, "value")
-            else player_data.game,
-            region=player_data.region.value
-            if hasattr(player_data.region, "value")
-            else player_data.region,
-            token_hash=token_hash,
+        # Use the create_with_token method from the model
+        new_player, token = Player.create_with_token(
+            db, run_id, player_data.name, player_data.game, player_data.region
         )
 
-        db.add(new_player)
-        db.commit()
-        db.refresh(new_player)
-
         # Return player data with the one-time token
-        player_data = {
+        response_data = {
             "id": new_player.id,
             "run_id": new_player.run_id,
             "name": new_player.name,
             "game": new_player.game,
             "region": new_player.region,
             "created_at": new_player.created_at,
-            "player_token": token,  # Include the plain token
+            "new_token": token,  # Include the plain token
         }
 
-        return PlayerWithTokenResponse(**player_data)
+        return PlayerWithTokenResponse(**response_data)
 
     except Exception as e:
         db.rollback()

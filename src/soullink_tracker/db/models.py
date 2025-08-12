@@ -148,6 +148,41 @@ class Player(Base):
         self.token_hash = token_hash
         return token
 
+    @classmethod
+    def create_with_token(
+        cls,
+        db_session,
+        run_id: UUID,
+        name: str,
+        game: str = None,
+        region: str = None,
+    ) -> tuple["Player", str]:
+        """
+        Create a new player with a generated token.
+
+        Args:
+            db_session: SQLAlchemy session
+            run_id: UUID of the run
+            name: Player name
+            game: Game version (optional)
+            region: Game region (optional)
+
+        Returns:
+            tuple: (Player instance, raw_token)
+        """
+        token, token_hash = cls.generate_token()
+        player = cls(
+            run_id=run_id,
+            name=name,
+            game=game or "Unknown",
+            region=region or "Unknown",
+            token_hash=token_hash,
+        )
+        db_session.add(player)
+        db_session.commit()
+        db_session.refresh(player)
+        return player, token
+
     def __repr__(self) -> str:
         return f"<Player(id={self.id}, name='{self.name}', game='{self.game}')>"
 

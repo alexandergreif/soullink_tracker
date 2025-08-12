@@ -63,8 +63,8 @@ class PlayerCreate(BaseModel):
     """Schema for creating a new player."""
 
     name: constr(min_length=1, max_length=100) = Field(description="Player name")
-    game: GameVersion = Field(description="Game version (HeartGold/SoulSilver)")
-    region: Region = Field(description="Game region (EU/US/JP)")
+    game: Optional[str] = Field(None, description="Game version (HeartGold/SoulSilver)")
+    region: Optional[str] = Field(None, description="Game region (EU/US/JP)")
 
 
 class PlayerResponse(BaseResponse):
@@ -81,7 +81,7 @@ class PlayerResponse(BaseResponse):
 class PlayerWithTokenResponse(PlayerResponse):
     """Schema for player response including token (only returned once)."""
 
-    player_token: str = Field(
+    new_token: str = Field(
         description="Bearer token for this player (shown only once)"
     )
 

@@ -34,6 +34,16 @@ class SoulLinkDashboard {
             // Setup event listeners
             this.setupEventListeners();
             
+            // Check if run ID is available
+            if (!this.runId) {
+                this.showLoading(false);
+                if (!window.adminUI) {
+                    window.adminUI = new AdminUI({ apiUrl: this.apiUrl });
+                }
+                window.adminUI.showSetup();
+                return;
+            }
+            
             // Load initial data
             await this.loadInitialData();
             
@@ -69,7 +79,7 @@ class SoulLinkDashboard {
      */
     getRunId() {
         const params = Utils.getUrlParams();
-        const runId = params.run || Utils.storage.get('currentRunId');
+        const runId = params.run || params.run_id || Utils.storage.get('currentRunId');
         
         if (runId && Utils.isValidUUID(runId)) {
             Utils.storage.set('currentRunId', runId);
@@ -139,6 +149,14 @@ class SoulLinkDashboard {
             this.handleRealtimeSoulLink(e.detail);
         });
         
+        // Run selection event
+        window.addEventListener('soullink:run_selected', (e) => {
+            const runId = e.detail?.runId || e.detail;
+            if (runId && Utils.isValidUUID(runId)) {
+                this.switchRun(runId);
+            }
+        });
+        
         // Visibility change - pause/resume when tab is hidden/visible
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -154,7 +172,8 @@ class SoulLinkDashboard {
      */
     async loadInitialData() {
         if (!this.runId) {
-            throw new Error('No run ID specified. Please provide a run ID in the URL.');
+            console.warn('No run ID available for loading data');
+            return;
         }
         
         try {
@@ -253,7 +272,8 @@ class SoulLinkDashboard {
             // Refresh players data (party status might change)
             const playersResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/players`);
             if (playersResponse.ok) {
-                this.cache.players = await playersResponse.json();
+                const data = await playersResponse.json();
+                this.cache.players = Array.isArray(data) ? data : (data.players || []);
                 this.updatePlayersUI();
             }
             
@@ -588,13 +608,67 @@ class SoulLinkDashboard {
     }
     
     /**
+     * Switch to a different run
+     * @param {string} newRunId - The new run ID
+     */
+    async switchRun(newRunId) {
+        try {
+            console.log('Switching to run:', newRunId);
+            
+            // Pause current updates
+            this.pauseUpdates();
+            
+            // Disconnect WebSocket if connected
+            if (this.websocket) {
+                this.websocket.disconnect();
+            }
+            
+            // Update run ID
+            this.runId = newRunId;
+            
+            // Persist to storage and update URL
+            Utils.storage.set('currentRunId', newRunId);
+            const url = new URL(window.location.href);
+            url.searchParams.set('run', newRunId);
+            window.history.replaceState({}, '', url.toString());
+            
+            // Show loading
+            this.showLoading(true);
+            
+            // Hide setup section, show dashboard
+            if (window.adminUI) {
+                window.adminUI.hideSetup();
+            }
+            
+            // Reload initial data
+            await this.loadInitialData();
+            
+            // Reconnect WebSocket
+            this.setupWebSocket();
+            
+            // Restart periodic refresh
+            this.startPeriodicRefresh();
+            
+            this.showLoading(false);
+            
+            console.log('Successfully switched to run:', newRunId);
+            
+        } catch (error) {
+            console.error('Error switching run:', error);
+            Utils.showError('Failed to switch run');
+            this.showLoading(false);
+        }
+    }
+    
+    /**
      * Refresh soul links from API
      */
     async refreshSoulLinks() {
         try {
-            const response = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/soul-links`);
+            const response = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/links`);
             if (response.ok) {
-                this.cache.soulLinks = await response.json();
+                const data = await response.json();
+                this.cache.soulLinks = Array.isArray(data) ? data : (data.links || []);
                 this.updateSoulLinksUI();
             }
         } catch (error) {
