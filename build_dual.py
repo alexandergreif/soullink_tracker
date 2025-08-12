@@ -299,7 +299,7 @@ def main():
     print("="*50)
     for exe in built_executables:
         size_mb = get_size_mb(exe)
-        print(f"✓ {exe.name} ({size_mb} MB)")
+        print(f"[OK] {exe.name} ({size_mb} MB)")
     
     print(f"\\nTotal executables built: {len(built_executables)}")
     return 0
