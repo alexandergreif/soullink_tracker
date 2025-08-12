@@ -335,7 +335,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.USER_PACKAGE_NAME }}-checksum
-          path: packages/${{ env.PACKAGE_NAME }}.zip.sha256
+          path: packages/${{ env.USER_PACKAGE_NAME }}.zip.sha256
           retention-days: 30
 
   release:
