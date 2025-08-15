@@ -336,6 +336,45 @@ class Utils {
     }
     
     /**
+     * Make authenticated API request
+     * @param {string} url - API endpoint URL
+     * @param {Object} options - Fetch options
+     * @returns {Promise<Response>} Fetch response
+     */
+    static async apiRequest(url, options = {}) {
+        const authHeader = Utils.auth.getAuthHeader();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...authHeader,
+            ...(options.headers || {})
+        };
+        
+        return fetch(url, {
+            ...options,
+            headers
+        });
+    }
+    
+    /**
+     * Redirect to login page if not authenticated
+     */
+    static requireAuth() {
+        if (!Utils.auth.isAuthenticated()) {
+            const currentUrl = new URL(window.location.href);
+            const apiParam = currentUrl.searchParams.get('api');
+            
+            let playerUrl = '/player.html';
+            if (apiParam) {
+                playerUrl += `?api=${encodeURIComponent(apiParam)}`;
+            }
+            
+            window.location.href = playerUrl;
+            return false;
+        }
+        return true;
+    }
+    
+    /**
      * Get URL parameters
      * @returns {Object} URL parameters as key-value pairs
      */
@@ -389,6 +428,124 @@ class Utils {
                 console.error('Storage remove error:', e);
                 return false;
             }
+        }
+    };
+    
+    /**
+     * Authentication and session management helpers
+     */
+    static auth = {
+        /**
+         * Get current session data
+         * @returns {Object} Session data with sessionToken, runId, playerId, etc.
+         */
+        getSessionData() {
+            return {
+                sessionToken: localStorage.getItem('soullink_session_token') || localStorage.getItem('sessionToken'),
+                runId: localStorage.getItem('soullink_run_id'),
+                playerId: localStorage.getItem('soullink_player_id'),
+                runName: localStorage.getItem('soullink_run_name'),
+                playerName: localStorage.getItem('soullink_player_name')
+            };
+        },
+        
+        /**
+         * Check if user has a valid session
+         * @returns {boolean} Whether user has valid session
+         */
+        isAuthenticated() {
+            const session = this.getSessionData();
+            return !!(session.sessionToken && session.runId && session.playerId);
+        },
+        
+        /**
+         * Get authentication header for API requests
+         * @returns {Object|null} Authorization header object or null
+         */
+        getAuthHeader() {
+            const session = this.getSessionData();
+            if (session.sessionToken) {
+                return { 'Authorization': `Bearer ${session.sessionToken}` };
+            }
+            return null;
+        },
+        
+        /**
+         * Clear all session data
+         */
+        clearSession() {
+            const keys = [
+                'soullink_session_token',
+                'sessionToken',
+                'soullink_run_id',
+                'soullink_player_id',
+                'soullink_run_name',
+                'soullink_player_name',
+                'soullink_player_token' // Legacy
+            ];
+            
+            keys.forEach(key => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (e) {
+                    console.warn(`Failed to remove ${key}:`, e);
+                }
+            });
+        }
+    };
+    
+    /**
+     * Legacy token helpers (for backward compatibility)
+     */
+    static token = {
+        /**
+         * Validate if a token has the correct format
+         * @param {string} token - Token to validate
+         * @returns {boolean} True if token appears valid
+         */
+        isValid(token) {
+            return token && 
+                   typeof token === 'string' && 
+                   token.length >= 20 && 
+                   !token.includes(' ') && 
+                   !token.includes('\n') &&
+                   token.trim() === token;
+        },
+        
+        /**
+         * Get bearer token (now uses session system)
+         * @returns {string|null} Valid token or null
+         */
+        getBearerToken() {
+            const session = Utils.auth.getSessionData();
+            return session.sessionToken;
+        },
+        
+        /**
+         * Set bearer token (legacy compatibility)
+         * @param {string} token - Token to store
+         * @param {string} key - Storage key (optional)
+         */
+        setBearerToken(token, key = 'soullink_session_token') {
+            if (!this.isValid(token)) {
+                console.error('Invalid token format provided');
+                return false;
+            }
+            
+            try {
+                localStorage.setItem(key, token.trim());
+                return true;
+            } catch (e) {
+                console.error('Failed to save token:', e);
+                return false;
+            }
+        },
+        
+        /**
+         * Clear all stored tokens (now uses auth.clearSession)
+         */
+        clearAll() {
+            Utils.auth.clearSession();
         }
     };
 }

@@ -5,12 +5,13 @@ import logging
 import time
 from uuid import UUID
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db.database import get_db
 from ..db.models import Run
-from ..auth.dependencies import get_current_player_from_token
+from ..auth.dependencies import get_current_player_from_token, get_current_player_from_session_token
+from ..config import get_config
 from ..events.websocket_manager import websocket_manager
 
 logger = logging.getLogger(__name__)
@@ -42,25 +43,57 @@ async def websocket_endpoint(
     };
     ```
     """
+    # Enhanced authentication with detailed logging
+    logger.info(f"WebSocket connection attempt: run_id={run_id}")
+    
     try:
-        # Authenticate the player using Bearer token
-        player = get_current_player_from_token(token, db)
+        # Validate token is present and not empty
+        if not token or token.strip() == "" or token == "missing":
+            logger.warning(f"WebSocket authentication failed: Empty or missing token (received: '{token}')")
+            await websocket.close(code=4001, reason="Missing authentication token")
+            return
+        
+        # Authenticate the player using session token with Bearer token fallback
+        config = get_config()
+        
+        try:
+            # Try session token authentication first
+            player = get_current_player_from_session_token(token.strip(), db)
+            logger.info(f"WebSocket authentication successful (session token): player_id={player.id}, player_name={player.name}")
+        except HTTPException as session_error:
+            # Fall back to legacy Bearer token if allowed
+            if config.app.auth_allow_legacy_bearer:
+                try:
+                    player = get_current_player_from_token(token.strip(), db)
+                    logger.info(f"WebSocket authentication successful (legacy Bearer token): player_id={player.id}, player_name={player.name}")
+                except HTTPException as bearer_error:
+                    logger.warning(f"WebSocket authentication failed - both session token and legacy Bearer token invalid: session_error={session_error.detail}, bearer_error={bearer_error.detail}")
+                    raise bearer_error
+            else:
+                logger.warning(f"WebSocket authentication failed - session token invalid and legacy Bearer tokens disabled: {session_error.detail}")
+                raise session_error
 
         # Verify the run exists
         run = db.query(Run).filter(Run.id == run_id).first()
         if not run:
+            logger.warning(f"WebSocket authentication failed: Run {run_id} not found")
             await websocket.close(code=4004, reason="Run not found")
             return
 
         # Verify player belongs to the requested run
         if player.run_id != run_id:
+            logger.warning(f"WebSocket authentication failed: Player {player.id} not authorized for run {run_id} (belongs to {player.run_id})")
             await websocket.close(
                 code=4003, reason="Player not authorized for this run"
             )
             return
 
+    except HTTPException as e:
+        logger.warning(f"WebSocket authentication failed (HTTP {e.status_code}): {e.detail}")
+        await websocket.close(code=4001, reason=f"Authentication failed: {e.detail}")
+        return
     except Exception as e:
-        logger.warning(f"WebSocket authentication failed: {e}")
+        logger.error(f"WebSocket authentication failed with unexpected error: {e}", exc_info=True)
         await websocket.close(code=4001, reason="Authentication failed")
         return
 
@@ -89,6 +122,20 @@ async def websocket_endpoint(
                         websocket_manager.active_connections[run_id][
                             websocket
                         ].last_ping = time.time()
+
+                elif message_type == "ping":
+                    # Handle ping request - reply with pong
+                    logger.debug(f"Received ping from player {player.name}")
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "pong",
+                                "data": {
+                                    "server_time": time.time(),
+                                },
+                            }
+                        )
+                    )
 
                 elif message_type == "catch_up_request":
                     # Handle catch-up request for missed events

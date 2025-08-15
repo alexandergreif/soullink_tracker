@@ -13,8 +13,8 @@ from .api.middleware import (
     RequestSizeLimitMiddleware,
     IdempotencyMiddleware,
 )
-from .config import get_web_directory
-from .api import runs, players, events, data, websockets, admin
+from .config import get_web_directory, get_config
+from .api import runs, players, events, data, websockets, admin, auth
 
 # Create FastAPI app
 app = FastAPI(
@@ -30,13 +30,28 @@ app.add_middleware(ProblemDetailsMiddleware)
 app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware)
 
-# Add CORS middleware (configure origins as needed)
+# Add CORS middleware with secure configuration
+config = get_config()
+allowed_origins = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
+
+# In development mode, allow additional localhost ports
+if config.server.debug:
+    allowed_origins.extend([
+        "http://127.0.0.1:3000",  # Development frontend
+        "http://localhost:3000",
+        "http://127.0.0.1:5000",  # Alternative dev ports
+        "http://localhost:5000",
+    ])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
 
 # Global web directory - will be set by setup_static_files()
@@ -79,6 +94,13 @@ app.include_router(events.router)
 app.include_router(data.router)
 app.include_router(websockets.router)
 app.include_router(admin.router)
+app.include_router(auth.router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize static files and other startup tasks."""
+    init_static_files()
 
 
 @app.get("/", include_in_schema=False)
@@ -98,6 +120,53 @@ async def dashboard(request: Request):
         web_index = _web_directory / "index.html"
         if web_index.exists():
             return FileResponse(str(web_index))
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/admin", include_in_schema=False)
+async def admin_panel(request: Request):
+    """Serve the admin panel (localhost only)."""
+    # Security check: Admin panel only accessible from localhost
+    client_host = request.client.host if request.client else None
+    localhost_ips = {"127.0.0.1", "::1"}
+    
+    if client_host not in localhost_ips:
+        return RedirectResponse(url="/docs")
+    
+    if _web_directory:
+        admin_html = _web_directory / "admin.html"
+        if admin_html.exists():
+            return FileResponse(str(admin_html))
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/player", include_in_schema=False)
+async def player_setup(request: Request):
+    """Serve the player setup interface."""
+    if _web_directory:
+        player_html = _web_directory / "player.html"
+        if player_html.exists():
+            return FileResponse(str(player_html))
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/css/{file_path:path}", include_in_schema=False)
+async def serve_css(file_path: str):
+    """Serve CSS files."""
+    if _web_directory:
+        css_file = _web_directory / "css" / file_path
+        if css_file.exists() and css_file.is_file():
+            return FileResponse(str(css_file), media_type="text/css")
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/js/{file_path:path}", include_in_schema=False)
+async def serve_js(file_path: str):
+    """Serve JavaScript files."""
+    if _web_directory:
+        js_file = _web_directory / "js" / file_path
+        if js_file.exists() and js_file.is_file():
+            return FileResponse(str(js_file), media_type="application/javascript")
     return RedirectResponse(url="/docs")
 
 

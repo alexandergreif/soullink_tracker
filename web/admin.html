@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoulLink Tracker - Admin Panel</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">
+                <span class="icon">⚙️</span>
+                SoulLink Admin Panel
+            </h1>
+            <div class="header-info">
+                <a href="/dashboard" class="btn btn-secondary">← Back to Dashboard</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Admin Navigation -->
+            <nav class="admin-nav">
+                <button class="nav-btn active" data-section="runs">Manage Runs</button>
+                <button class="nav-btn" data-section="players">Manage Players</button>
+                <button class="nav-btn" data-section="settings">Settings</button>
+            </nav>
+
+            <!-- Runs Management Section -->
+            <section class="admin-section" id="runsSection">
+                <h2 class="section-title">Run Management</h2>
+                
+                <!-- Create New Run -->
+                <div class="admin-card">
+                    <h3>Create New Run</h3>
+                    <form id="createRunForm" class="admin-form">
+                        <div class="form-group">
+                            <label for="runNameInput">Run Name:</label>
+                            <input type="text" id="runNameInput" placeholder="Enter run name..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="maxPlayersInput">Max Players:</label>
+                            <select id="maxPlayersInput">
+                                <option value="2">2 Players</option>
+                                <option value="3" selected>3 Players</option>
+                                <option value="4">4 Players</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="runPasswordInput">Run Password:</label>
+                            <input type="password" id="runPasswordInput" placeholder="Enter run password (required for new auth system)..." required>
+                            <small class="form-hint">Players will use this password to join the run</small>
+                        </div>
+                        <button type="submit" id="createRunBtn" class="btn btn-primary">Create Run</button>
+                    </form>
+                </div>
+
+                <!-- Existing Runs -->
+                <div class="admin-card">
+                    <h3>Existing Runs</h3>
+                    <div id="runsList" class="runs-list">
+                        <!-- Runs will be populated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Players Management Section -->
+            <section class="admin-section hidden" id="playersSection">
+                <h2 class="section-title">Player Management</h2>
+                
+                <!-- Global Player Overview -->
+                <div class="admin-card">
+                    <h3>All Players Overview</h3>
+                    <div class="player-stats-grid">
+                        <div class="stat-item">
+                            <label>Total Players:</label>
+                            <span id="totalPlayersCount">Loading...</span>
+                        </div>
+                        <div class="stat-item">
+                            <label>Active Players:</label>
+                            <span id="activePlayersCount">Loading...</span>
+                        </div>
+                        <div class="stat-item">
+                            <label>Total Runs:</label>
+                            <span id="totalRunsForPlayers">Loading...</span>
+                        </div>
+                        <div class="stat-item">
+                            <label>Last Activity:</label>
+                            <span id="lastPlayerActivity">Loading...</span>
+                        </div>
+                    </div>
+                    <button id="refreshPlayerStats" class="btn btn-secondary">Refresh Statistics</button>
+                </div>
+                
+                <!-- Select Run for Management -->
+                <div class="admin-card">
+                    <h3>Select Run to Manage</h3>
+                    <div class="form-group">
+                        <label for="runSelectForPlayers">Choose Run:</label>
+                        <select id="runSelectForPlayers">
+                            <option value="">Select a run...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Add Players (shown when run selected) -->
+                <div class="admin-card hidden" id="addPlayerCard">
+                    <h3>Add New Player</h3>
+                    <form id="addPlayerForm" class="admin-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="playerNameInput">Player Name:</label>
+                                <input type="text" id="playerNameInput" placeholder="Enter player name..." required>
+                            </div>
+                            <div class="form-group">
+                                <label for="playerGameSelect">Game:</label>
+                                <select id="playerGameSelect">
+                                    <option value="HeartGold">HeartGold</option>
+                                    <option value="SoulSilver">SoulSilver</option>
+                                    <option value="Unknown">Unknown</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="playerRegionInput">Region:</label>
+                                <input type="text" id="playerRegionInput" placeholder="EU, US, JP..." value="EU">
+                            </div>
+                        </div>
+                        <button type="submit" id="addPlayerBtn" class="btn btn-primary">Add Player</button>
+                    </form>
+                </div>
+
+                <!-- Current Players List -->
+                <div class="admin-card hidden" id="playersListCard">
+                    <h3>Players in Selected Run</h3>
+                    <div id="currentPlayersList" class="players-list">
+                        <!-- Players will be populated here -->
+                    </div>
+                </div>
+
+                <!-- All Players Across All Runs -->
+                <div class="admin-card">
+                    <h3>All Players (Global View)</h3>
+                    <div class="table-controls">
+                        <div class="search-box">
+                            <input type="text" id="playerSearchInput" placeholder="Search players by name, run, or game...">
+                            <button id="searchPlayersBtn" class="btn btn-secondary">Search</button>
+                        </div>
+                        <div class="filter-controls">
+                            <select id="gameFilterSelect">
+                                <option value="">All Games</option>
+                                <option value="HeartGold">HeartGold</option>
+                                <option value="SoulSilver">SoulSilver</option>
+                                <option value="Unknown">Unknown</option>
+                            </select>
+                            <select id="statusFilterSelect">
+                                <option value="">All Status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="allPlayersList" class="global-players-list">
+                        <!-- Global players will be populated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section class="admin-section hidden" id="settingsSection">
+                <h2 class="section-title">System Settings</h2>
+                
+                <!-- System Status Overview -->
+                <div class="admin-card">
+                    <h3>System Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <label>Service Status:</label>
+                            <span id="serviceStatus" class="status-indicator">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Checking...</span>
+                            </span>
+                        </div>
+                        <div class="status-item">
+                            <label>Database:</label>
+                            <span id="databaseStatus" class="status-indicator">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Checking...</span>
+                            </span>
+                        </div>
+                        <div class="status-item">
+                            <label>Config:</label>
+                            <span id="configStatus" class="status-indicator">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Checking...</span>
+                            </span>
+                        </div>
+                        <div class="status-item">
+                            <label>Response Time:</label>
+                            <span id="responseTime">-</span>
+                        </div>
+                    </div>
+                    <div class="status-actions">
+                        <button id="refreshStatusBtn" class="btn btn-secondary">Refresh Status</button>
+                        <button class="btn btn-secondary" onclick="window.open('/health', '_blank')">Health Check</button>
+                        <button class="btn btn-secondary" onclick="window.open('/ready', '_blank')">Ready Check</button>
+                    </div>
+                </div>
+
+                <!-- Database Statistics -->
+                <div class="admin-card">
+                    <h3>Database Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalRunsCount">-</div>
+                            <div class="stat-label">Total Runs</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalPlayersInDb">-</div>
+                            <div class="stat-label">Total Players</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalEncounters">-</div>
+                            <div class="stat-label">Total Encounters</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="activeConnections">-</div>
+                            <div class="stat-label">Active Connections</div>
+                        </div>
+                    </div>
+                    <button id="refreshDbStatsBtn" class="btn btn-secondary">Refresh Statistics</button>
+                </div>
+
+                <!-- API & System Information -->
+                <div class="admin-card">
+                    <h3>System Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <label>API Base URL:</label>
+                            <span id="apiUrlDisplay" class="info-value"></span>
+                            <button class="copy-btn" onclick="adminPanel.copyToClipboard(document.getElementById('apiUrlDisplay').textContent)">Copy</button>
+                        </div>
+                        <div class="info-item">
+                            <label>API Version:</label>
+                            <span id="versionDisplay" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Environment:</label>
+                            <span id="environmentDisplay" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Event Store v3:</label>
+                            <span id="eventStoreStatus" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Server Uptime:</label>
+                            <span id="serverUptime" class="info-value">Loading...</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Last Restart:</label>
+                            <span id="lastRestart" class="info-value">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time Connection Monitoring -->
+                <div class="admin-card">
+                    <h3>Real-time Connections</h3>
+                    <div class="connection-monitor">
+                        <div class="monitor-header">
+                            <div class="monitor-stats">
+                                <span>Active WebSocket Connections: <strong id="wsConnectionCount">0</strong></span>
+                                <span>Total Data Transferred: <strong id="dataTransferred">0 KB</strong></span>
+                            </div>
+                            <button id="refreshConnectionsBtn" class="btn btn-secondary">Refresh</button>
+                        </div>
+                        <div id="connectionsList" class="connections-list">
+                            <!-- Active connections will be listed here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authentication & Security Settings -->
+                <div class="admin-card">
+                    <h3>Authentication Settings</h3>
+                    <div class="auth-settings">
+                        <div class="setting-group">
+                            <label>Token Expiration Policy:</label>
+                            <div class="setting-value">
+                                <span id="tokenExpiryPolicy">Never expires (for game sessions)</span>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <label>Rate Limiting:</label>
+                            <div class="setting-value">
+                                <span>10 requests/second burst, 60 requests/minute sustained</span>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <label>Security Features:</label>
+                            <div class="setting-value">
+                                <div class="feature-list">
+                                    <span class="feature-enabled">✓ Bearer Token Authentication</span>
+                                    <span class="feature-enabled">✓ CORS Protection</span>
+                                    <span class="feature-enabled">✓ Request Size Limits</span>
+                                    <span class="feature-enabled">✓ Idempotency Keys</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Event Store & Database Management -->
+                <div class="admin-card">
+                    <h3>Event Store Management</h3>
+                    <div class="eventstore-controls">
+                        <div class="form-group">
+                            <label for="rebuildRunSelect">Select Run for Projection Rebuild:</label>
+                            <select id="rebuildRunSelect" class="form-control">
+                                <option value="">Select a run...</option>
+                            </select>
+                        </div>
+                        <div class="action-buttons">
+                            <button id="rebuildProjectionsBtn" class="btn btn-warning" disabled>
+                                🔄 Rebuild Projections
+                            </button>
+                            <button id="validateDataBtn" class="btn btn-secondary">
+                                ✓ Validate Data Integrity
+                            </button>
+                        </div>
+                        <div id="rebuildStatus" class="status-message hidden"></div>
+                        <div id="validationStatus" class="status-message hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Application Configuration -->
+                <div class="admin-card">
+                    <h3>Application Configuration</h3>
+                    <div class="config-section">
+                        <div class="config-group">
+                            <label>Log Level:</label>
+                            <select id="logLevelSelect" class="form-control">
+                                <option value="DEBUG">DEBUG (Detailed)</option>
+                                <option value="INFO" selected>INFO (Standard)</option>
+                                <option value="WARNING">WARNING (Important Only)</option>
+                                <option value="ERROR">ERROR (Errors Only)</option>
+                            </select>
+                            <button id="updateLogLevelBtn" class="btn btn-secondary">Update</button>
+                        </div>
+                        <div class="config-group">
+                            <label>WebSocket Heartbeat Interval:</label>
+                            <div class="input-group">
+                                <input type="number" id="heartbeatInterval" value="30" min="10" max="300">
+                                <span>seconds</span>
+                                <button id="updateHeartbeatBtn" class="btn btn-secondary">Update</button>
+                            </div>
+                        </div>
+                        <div class="config-group">
+                            <label>Max Players Per Run:</label>
+                            <div class="input-group">
+                                <input type="number" id="maxPlayersPerRun" value="3" min="2" max="10">
+                                <span>players</span>
+                                <button id="updateMaxPlayersBtn" class="btn btn-secondary">Update</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="admin-card">
+                    <h3>Quick Actions</h3>
+                    <div class="quick-actions">
+                        <button class="btn btn-secondary" onclick="window.open('/docs', '_blank')">
+                            📖 API Documentation
+                        </button>
+                        <button class="btn btn-secondary" id="exportLogsBtn">
+                            📁 Export System Logs
+                        </button>
+                        <button class="btn btn-secondary" id="backupDatabaseBtn">
+                            💾 Backup Database
+                        </button>
+                        <button class="btn btn-warning" id="clearCacheBtn">
+                            🗑️ Clear Application Cache
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Token Modal -->
+    <div class="modal" id="tokenModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Player Token Generated</h3>
+                <button class="modal-close" id="tokenModalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="tokenModalBody">
+                <!-- Token details will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div class="toast success-toast" id="successToast">
+        <div class="toast-content">
+            <span class="toast-icon">✅</span>
+            <span class="toast-message" id="successMessage"></span>
+            <button class="toast-close" id="successToastClose">&times;</button>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="toast error-toast" id="errorToast">
+        <div class="toast-content">
+            <span class="toast-icon">⚠️</span>
+            <span class="toast-message" id="errorMessage"></span>
+            <button class="toast-close" id="errorToastClose">&times;</button>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 SoulLink Tracker Admin Panel. Made for Pokemon HeartGold/SoulSilver randomizer runs.</p>
+        </div>
+    </footer>
+
+    <script>
+        // JavaScript-based cache-busting
+        (function() {
+            const timestamp = Date.now();
+            const utilsScript = document.createElement('script');
+            utilsScript.src = '/js/utils.js?v=' + timestamp;
+            document.head.appendChild(utilsScript);
+            
+            utilsScript.onload = function() {
+                const adminScript = document.createElement('script');
+                adminScript.src = '/js/admin-panel.js?v=' + timestamp;
+                document.head.appendChild(adminScript);
+            };
+        })();
+    </script>
+</body>
+</html>

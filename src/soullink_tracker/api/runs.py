@@ -27,9 +27,19 @@ def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunRespons
 
     This endpoint is typically used by administrators to set up new runs.
     The rules_json field can contain custom game rules and configurations.
+    The password will be hashed and stored securely.
     """
+    # Hash the password
+    from ..auth.security import hash_password
+    salt_hex, hash_hex = hash_password(run_data.password)
+    
     # Create new run
-    run = Run(name=run_data.name, rules_json=run_data.rules_json)
+    run = Run(
+        name=run_data.name,
+        rules_json=run_data.rules_json,
+        password_salt=salt_hex,
+        password_hash=hash_hex,
+    )
 
     db.add(run)
     db.commit()

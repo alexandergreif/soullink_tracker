@@ -15,6 +15,14 @@
                 SoulLink Tracker
             </h1>
             <div class="header-info">
+                <div class="admin-controls">
+                    <button class="btn btn-secondary" onclick="window.open('/admin', '_blank')" title="Open Admin Panel">
+                        ⚙️ Admin
+                    </button>
+                    <button class="btn btn-primary" id="switchRunBtn" onclick="window.showRunSelector()" title="Switch to different run">
+                        🔄 Switch Run
+                    </button>
+                </div>
                 <div class="connection-status" id="connectionStatus">
                     <span class="status-indicator" id="statusIndicator"></span>
                     <span id="statusText">Connecting...</span>
@@ -28,6 +36,32 @@
 
     <main class="main">
         <div class="container">
+            <!-- Token Setup Section -->
+            <section class="section" id="tokenSetupSection">
+                <h2 class="section-title">Player Authentication</h2>
+                <div class="token-setup-card">
+                    <div class="token-status" id="tokenStatus">
+                        <div class="token-status-indicator" id="tokenStatusIndicator">
+                            <span class="status-dot" id="tokenStatusDot"></span>
+                            <span id="tokenStatusText">No token configured</span>
+                        </div>
+                        <button class="btn btn-secondary" id="configureTokenBtn" onclick="window.showTokenSetup()">Configure Token</button>
+                    </div>
+                    
+                    <div class="token-setup-form" id="tokenSetupForm" style="display: none;">
+                        <div class="form-group">
+                            <label for="playerTokenInput">Player Bearer Token:</label>
+                            <textarea id="playerTokenInput" placeholder="Paste your bearer token here..." rows="3"></textarea>
+                            <small class="form-help">Get your token from the admin panel or ask your run organizer.</small>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" id="saveTokenBtn" onclick="window.saveToken()">Save Token</button>
+                            <button class="btn btn-secondary" id="cancelTokenBtn" onclick="window.hideTokenSetup()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
             <!-- Admin Setup Section -->
             <section class="section" id="setupSection" style="display:none;">
                 <h2 class="section-title">Admin Setup</h2>
@@ -129,12 +163,59 @@
                 </div>
             </section>
 
-            <!-- Recent Events -->
+            <!-- Event Timeline -->
             <section class="section">
-                <h2 class="section-title">Recent Events</h2>
-                <div class="events-container">
-                    <div class="events-list" id="eventsList">
-                        <!-- Events will be populated dynamically -->
+                <h2 class="section-title">Event Timeline</h2>
+                <div class="timeline-container">
+                    <div class="timeline-filters">
+                        <div class="filter-group">
+                            <label>Filter by Type:</label>
+                            <div class="filter-buttons">
+                                <button class="filter-btn active" data-filter="all">All Events</button>
+                                <button class="filter-btn" data-filter="encounter">Encounters</button>
+                                <button class="filter-btn" data-filter="catch">Catches</button>
+                                <button class="filter-btn" data-filter="faint">Faints</button>
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label for="playerFilter">Filter by Player:</label>
+                            <select id="playerFilter" class="filter-select">
+                                <option value="all">All Players</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="timeline-content">
+                        <div class="timeline-list" id="timelineList">
+                            <!-- Timeline events will be populated dynamically -->
+                        </div>
+                        <div class="timeline-empty" id="timelineEmpty" style="display: none;">
+                            <p>No events to display. Start playing to see encounter history!</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Blocklist Overview -->
+            <section class="section">
+                <h2 class="section-title">Blocked Pokemon Families</h2>
+                <div class="blocklist-container">
+                    <div class="blocklist-filters">
+                        <div class="filter-group">
+                            <label>Filter by Reason:</label>
+                            <div class="filter-buttons">
+                                <button class="filter-btn active" data-filter="all">All Blocked</button>
+                                <button class="filter-btn" data-filter="caught">Already Caught</button>
+                                <button class="filter-btn" data-filter="encounter">Already Encountered</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="blocklist-content">
+                        <div class="blocklist-grid" id="blocklistGrid">
+                            <!-- Blocked families will be populated dynamically -->
+                        </div>
+                        <div class="blocklist-empty" id="blocklistEmpty" style="display: none;">
+                            <p>No Pokemon families are blocked yet. Start catching Pokemon to see blocked families!</p>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -151,6 +232,7 @@
                     </div>
                 </div>
             </section>
+
         </div>
     </main>
 
@@ -202,6 +284,42 @@
             </div>
             <div class="modal-body" id="tokenModalBody">
                 <!-- Token details will be populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Run Selector Modal -->
+    <div class="modal" id="runSelectorModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Switch Run</h3>
+                <button class="modal-close" id="runSelectorClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="run-selector-content">
+                    <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                        Select a different run to view, or create a new one:
+                    </p>
+                    
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label for="runSelectModal">Available Runs:</label>
+                        <select id="runSelectModal" style="margin-bottom: 0.5rem;">
+                            <option value="">Loading runs...</option>
+                        </select>
+                        <button type="button" id="switchToRunBtn" class="btn btn-primary" style="width: 100%;">
+                            Switch to Selected Run
+                        </button>
+                    </div>
+                    
+                    <div style="text-align: center; padding: 1rem 0; border-top: 1px solid var(--border-color);">
+                        <p style="margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.9rem;">
+                            Need to create a new run or add players?
+                        </p>
+                        <button type="button" class="btn btn-secondary" onclick="window.open('/admin', '_blank'); hideRunSelector();">
+                            🚀 Open Admin Panel
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

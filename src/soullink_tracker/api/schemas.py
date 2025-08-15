@@ -33,11 +33,40 @@ class ProblemDetails(BaseModel):
     )
 
 
+# Authentication schemas
+class LoginRequest(BaseModel):
+    """Schema for login request."""
+
+    run_id: Optional[UUID] = Field(None, description="UUID of the run (alternative to run_name)")
+    run_name: Optional[str] = Field(None, description="Name of the run (alternative to run_id)")
+    player_name: constr(min_length=1, max_length=100) = Field(description="Player name")
+    password: constr(min_length=1) = Field(description="Run password")
+
+
+class LoginResponse(BaseModel):
+    """Schema for login response."""
+
+    session_token: str = Field(description="Session token for API authentication")
+    run_id: UUID = Field(description="UUID of the run")
+    player_id: UUID = Field(description="UUID of the player")
+    expires_at: datetime = Field(description="Token expiration timestamp")
+
+
+class LoginResponse(BaseModel):
+    """Schema for login response."""
+
+    session_token: str = Field(description="Session token for API authentication")
+    run_id: UUID = Field(description="UUID of the run")
+    player_id: UUID = Field(description="UUID of the player")
+    expires_at: datetime = Field(description="Token expiration timestamp")
+
+
 # Run-related schemas
 class RunCreate(BaseModel):
     """Schema for creating a new run."""
 
     name: constr(min_length=1, max_length=255) = Field(description="Name of the run")
+    password: constr(min_length=1) = Field(description="Password for run access")
     rules_json: Dict = Field(
         default_factory=dict, description="Run rules configuration"
     )

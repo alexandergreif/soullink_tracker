@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoulLink Tracker - Player Setup</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,">
+    <style>
+        .player-setup {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--surface-color);
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 0 30px var(--glow-primary);
+        }
+        
+        .setup-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .setup-header h1 {
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .setup-header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        .token-form {
+            margin-bottom: 2rem;
+        }
+        
+        .token-input {
+            width: 100%;
+            padding: 1rem;
+            background: var(--background-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 0.9rem;
+            transition: border-color var(--transition-fast);
+        }
+        
+        .token-input:focus {
+            outline: none;
+            border-color: var(--border-accent);
+            box-shadow: 0 0 10px var(--glow-primary);
+        }
+        
+        .connect-btn {
+            width: 100%;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            margin-top: 1rem;
+        }
+        
+        .connect-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 0 20px var(--glow-primary);
+        }
+        
+        .connect-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status-section {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: var(--background-secondary);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        
+        .status-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .status-value {
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 0.5rem;
+        }
+        
+        .status-indicator.connected {
+            background: var(--success-color);
+            box-shadow: 0 0 10px var(--success-color);
+        }
+        
+        .status-indicator.disconnected {
+            background: var(--danger-color);
+            box-shadow: 0 0 10px var(--danger-color);
+        }
+        
+        .status-indicator.pending {
+            background: var(--warning-color);
+            box-shadow: 0 0 10px var(--warning-color);
+        }
+        
+        .instructions {
+            background: rgba(14, 165, 233, 0.1);
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .instructions h3 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+        
+        .instructions ol {
+            color: var(--text-secondary);
+            padding-left: 1.5rem;
+        }
+        
+        .instructions li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger-color);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-top: 1rem;
+            color: var(--danger-color);
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">
+                <span class="icon">🎮</span>
+                SoulLink Player Setup
+            </h1>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <div class="player-setup">
+                <div class="setup-header">
+                    <h1>Join SoulLink Run</h1>
+                    <p>Enter your run credentials to connect to your SoulLink run</p>
+                </div>
+                
+                <div class="instructions">
+                    <h3>🎮 Quick Setup:</h3>
+                    <ol>
+                        <li>Get your <strong>run name</strong>, <strong>player name</strong>, and <strong>password</strong> from your run admin</li>
+                        <li>Enter them below and click <strong>"Connect to Run"</strong></li>
+                        <li>Load <code>pokemon_tracker_v3.lua</code> in DeSmuME</li>
+                        <li>Start playing - events will be tracked automatically!</li>
+                    </ol>
+                </div>
+                
+                <form class="token-form" id="loginForm">
+                    <div class="form-group">
+                        <label for="runName" style="margin-bottom: 0.5rem; display: block; color: var(--text-secondary); font-weight: 500;">
+                            Run Name:
+                        </label>
+                        <input type="text" id="runName" class="token-input" style="height: auto; padding: 1rem; font-family: inherit;" placeholder="Enter your run name..." required>
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="playerName" style="margin-bottom: 0.5rem; display: block; color: var(--text-secondary); font-weight: 500;">
+                            Player Name:
+                        </label>
+                        <input type="text" id="playerName" class="token-input" style="height: auto; padding: 1rem; font-family: inherit;" placeholder="Enter your player name..." required>
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label for="runPassword" style="margin-bottom: 0.5rem; display: block; color: var(--text-secondary); font-weight: 500;">
+                            Run Password:
+                        </label>
+                        <input type="password" id="runPassword" class="token-input" style="height: auto; padding: 1rem; font-family: inherit;" placeholder="Enter your run password..." required>
+                    </div>
+                    
+                    <button type="submit" class="connect-btn" id="connectBtn">
+                        🚀 Connect to Run
+                    </button>
+                    
+                    <div id="errorMessage" class="error-message hidden"></div>
+                </form>
+                
+                <div class="status-section" id="statusSection">
+                    <h3 style="color: var(--text-primary); margin-bottom: 1rem;">Connection Status</h3>
+                    
+                    <div class="status-item">
+                        <span class="status-label">API Connection:</span>
+                        <div style="display: flex; align-items: center;">
+                            <span class="status-value" id="apiStatus">Disconnected</span>
+                            <div class="status-indicator disconnected" id="apiIndicator"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="status-item">
+                        <span class="status-label">Player Name:</span>
+                        <span class="status-value" id="playerName">-</span>
+                    </div>
+                    
+                    <div class="status-item">
+                        <span class="status-label">Run Name:</span>
+                        <span class="status-value" id="runName">-</span>
+                    </div>
+                    
+                    <div class="status-item">
+                        <span class="status-label">Game:</span>
+                        <span class="status-value" id="playerGame">-</span>
+                    </div>
+                    
+                    <div class="status-item">
+                        <span class="status-label">Watcher Status:</span>
+                        <div style="display: flex; align-items: center;">
+                            <span class="status-value" id="watcherStatus">Stopped</span>
+                            <div class="status-indicator disconnected" id="watcherIndicator"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 2rem; text-align: center;">
+                    <button class="btn btn-secondary" onclick="window.open('/dashboard', '_blank')" style="margin-right: 1rem;">
+                        📊 View Dashboard
+                    </button>
+                    <button class="btn btn-secondary" id="openDashboardBtn" onclick="openPlayerDashboard()" style="display: none;">
+                        🎯 View My Progress
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 SoulLink Tracker Player Interface. Ready for Pokemon HeartGold/SoulSilver!</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/player-setup.js"></script>
+</body>
+</html>
