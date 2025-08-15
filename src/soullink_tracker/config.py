@@ -58,6 +58,11 @@ class AppConfig:
         False  # Enable dual-write (V2 + V3) for compatibility testing
     )
 
+    # Security Configuration
+    session_ttl_days: int = 30  # Session token TTL in days
+    password_hash_iterations: int = 120_000  # PBKDF2 iterations
+    auth_allow_legacy_bearer: bool = True  # Allow legacy bearer token auth
+
     # Logging
     log_level: str = "INFO"
     log_to_file: bool = True

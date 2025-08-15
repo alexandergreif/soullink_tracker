@@ -46,7 +46,17 @@
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_type",
       "Bash(python -m pytest \"tests/integration/test_projection_engine.py::TestProjectionEngineCorrectness::test_rebuild_projections_matches_direct_application\" -xvs)",
-      "Bash(python -m pytest tests/integration/test_projection_graceful_errors.py -xvs --tb=long)"
+      "Bash(python -m pytest tests/integration/test_projection_graceful_errors.py -xvs --tb=long)",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_tab_new",
+      "mcp__playwright__browser_select_option",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_tab_select",
+      "mcp__playwright__browser_tab_close",
+      "mcp__semgrep__security_check"
     ],
     "deny": []
   }

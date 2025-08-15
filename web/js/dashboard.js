@@ -18,7 +18,22 @@ class SoulLinkDashboard {
             players: [],
             encounters: [],
             soulLinks: [],
+            blocklist: [],
             lastUpdate: null
+        };
+        
+        // Session data
+        this.sessionData = this.getSessionData();
+        
+        // Filter states
+        this.filters = {
+            timeline: {
+                type: 'all',
+                player: 'all'
+            },
+            blocklist: {
+                reason: 'all'
+            }
         };
         
         this.init();
@@ -31,16 +46,26 @@ class SoulLinkDashboard {
         try {
             this.showLoading(true);
             
+            // Ensure admin controls are always visible
+            this.ensureAdminControls();
+            
+            // Check authentication first
+            if (!this.checkAuthentication()) {
+                this.showLoading(false);
+                return;
+            }
+            
+            // Initialize auth status
+            this.updateTokenStatus();
+            
             // Setup event listeners
             this.setupEventListeners();
             
             // Check if run ID is available
             if (!this.runId) {
                 this.showLoading(false);
-                if (!window.adminUI) {
-                    window.adminUI = new AdminUI({ apiUrl: this.apiUrl });
-                }
-                window.adminUI.showSetup();
+                // Show run selector instead of admin setup
+                await this.showRunSelector();
                 return;
             }
             
@@ -58,9 +83,68 @@ class SoulLinkDashboard {
             console.log('SoulLink Dashboard initialized successfully');
         } catch (error) {
             console.error('Failed to initialize dashboard:', error);
-            Utils.showError('Failed to initialize dashboard');
             this.showLoading(false);
+            
+            // Still ensure admin controls are visible even on error
+            this.ensureAdminControls();
         }
+    }
+    
+    /**
+     * Update authentication status indicator
+     */
+    updateTokenStatus() {
+        const tokenStatusDot = document.getElementById('tokenStatusDot');
+        const tokenStatusText = document.getElementById('tokenStatusText');
+        const configureBtn = document.getElementById('configureTokenBtn');
+        
+        if (!tokenStatusDot || !tokenStatusText || !configureBtn) return;
+        
+        const sessionData = this.getSessionData();
+        
+        if (sessionData.sessionToken && sessionData.runId && sessionData.playerId) {
+            // Valid session exists
+            tokenStatusDot.className = 'status-dot healthy';
+            tokenStatusText.textContent = `Logged in as ${sessionData.playerName || 'Player'} (${sessionData.runName || 'Run'})`;
+            configureBtn.textContent = 'Logout';
+            configureBtn.onclick = () => this.logout();
+        } else {
+            // No valid session
+            tokenStatusDot.className = 'status-dot error';
+            tokenStatusText.textContent = 'Not logged in';
+            configureBtn.textContent = 'Login';
+            configureBtn.onclick = () => this.redirectToPlayerSetup();
+        }
+    }
+    
+    /**
+     * Ensure admin controls are visible in the header
+     */
+    ensureAdminControls() {
+        const headerInfo = document.querySelector('.header-info');
+        let adminControls = document.querySelector('.admin-controls');
+        
+        if (!headerInfo) return;
+        
+        if (!adminControls) {
+            // Create admin controls if they don't exist
+            adminControls = document.createElement('div');
+            adminControls.className = 'admin-controls';
+            adminControls.innerHTML = `
+                <button class="btn btn-secondary" onclick="window.open('/admin', '_blank')" title="Open Admin Panel">
+                    ⚙️ Admin
+                </button>
+                <button class="btn btn-primary" onclick="window.showRunSelector()" title="Switch to different run">
+                    🔄 Switch Run
+                </button>
+            `;
+            
+            // Insert as the first child of header-info
+            headerInfo.insertBefore(adminControls, headerInfo.firstChild);
+        }
+        
+        // Ensure they're visible
+        adminControls.style.display = 'flex';
     }
     
     /**
@@ -70,16 +154,16 @@ class SoulLinkDashboard {
     getApiUrl() {
         // Try to get from URL params, environment, or use default
         const params = Utils.getUrlParams();
-        return params.api || window.SOULLINK_API_URL || 'http://127.0.0.1:9000';
+        return params.api || window.SOULLINK_API_URL || 'http://127.0.0.1:8000';
     }
     
     /**
-     * Get run ID from URL params or storage
+     * Get run ID from URL params or session storage
      * @returns {string|null} Run ID
      */
     getRunId() {
         const params = Utils.getUrlParams();
-        const runId = params.run || params.run_id || Utils.storage.get('currentRunId');
+        const runId = params.run || params.run_id || localStorage.getItem('soullink_run_id') || Utils.storage.get('currentRunId');
         
         if (runId && Utils.isValidUUID(runId)) {
             Utils.storage.set('currentRunId', runId);
@@ -157,6 +241,21 @@ class SoulLinkDashboard {
             }
         });
         
+        // Setup filter event listeners for new components
+        this.setupFilterEventListeners();
+        
+        // Run selector modal handlers
+        const runSelectorClose = document.getElementById('runSelectorClose');
+        const switchToRunBtn = document.getElementById('switchToRunBtn');
+        
+        if (runSelectorClose) {
+            runSelectorClose.addEventListener('click', () => this.hideRunSelector());
+        }
+        
+        if (switchToRunBtn) {
+            switchToRunBtn.addEventListener('click', () => this.handleSwitchToRun());
+        }
+        
         // Visibility change - pause/resume when tab is hidden/visible
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -223,6 +322,18 @@ class SoulLinkDashboard {
             } catch (error) {
                 console.warn('Soul links endpoint not available:', error);
                 this.cache.soulLinks = [];
+            }
+            
+            // Load blocklist
+            try {
+                const blocklistResponse = await fetch(`${this.apiUrl}/v1/runs/${this.runId}/blocklist`);
+                if (blocklistResponse.ok) {
+                    const blocklistData = await blocklistResponse.json();
+                    this.cache.blocklist = Array.isArray(blocklistData) ? blocklistData : (blocklistData.blocked_families || []);
+                }
+            } catch (error) {
+                console.warn('Blocklist endpoint not available:', error);
+                this.cache.blocklist = [];
             }
             
             this.cache.lastUpdate = new Date();
@@ -293,6 +404,9 @@ class SoulLinkDashboard {
         this.updatePlayersUI();
         this.updateEventsUI();
         this.updateSoulLinksUI();
+        this.updateBlocklistUI();
+        this.updateTimelineUI();
+        this.setupFilterEventListeners();
     }
     
     /**
@@ -677,6 +791,274 @@ class SoulLinkDashboard {
     }
     
     /**
+     * Update blocklist UI
+     */
+    updateBlocklistUI() {
+        const blocklistGrid = document.getElementById('blocklistGrid');
+        const blocklistEmpty = document.getElementById('blocklistEmpty');
+        const blocklistCount = document.getElementById('blocklistCount');
+        
+        if (!blocklistGrid || !blocklistEmpty) return;
+        
+        // Update count
+        if (blocklistCount) {
+            blocklistCount.textContent = this.cache.blocklist.length;
+        }
+        
+        if (this.cache.blocklist.length === 0) {
+            blocklistGrid.style.display = 'none';
+            blocklistEmpty.style.display = 'block';
+            return;
+        }
+        
+        blocklistGrid.style.display = 'grid';
+        blocklistEmpty.style.display = 'none';
+        
+        // Apply current filter
+        const filter = document.getElementById('blocklistFilter')?.value || 'all';
+        const filteredBlocklist = this.filterBlocklist(this.cache.blocklist, filter);
+        
+        blocklistGrid.innerHTML = '';
+        
+        filteredBlocklist.forEach(entry => {
+            const blocklistCard = this.createBlocklistCard(entry);
+            blocklistGrid.appendChild(blocklistCard);
+        });
+    }
+    
+    /**
+     * Filter blocklist by type
+     * @param {Array} blocklist - Blocklist entries
+     * @param {string} filter - Filter type
+     * @returns {Array} Filtered blocklist
+     */
+    filterBlocklist(blocklist, filter) {
+        if (filter === 'all') return blocklist;
+        return blocklist.filter(entry => entry.origin === filter);
+    }
+    
+    /**
+     * Create blocklist card element
+     * @param {Object} entry - Blocklist entry
+     * @returns {HTMLElement} Blocklist card element
+     */
+    createBlocklistCard(entry) {
+        const speciesBadges = entry.species_names?.map(name => 
+            Utils.createElement('span', { className: 'blocked-species-badge' }, name)
+        ) || [];
+        
+        return Utils.createElement('div', { className: 'blocked-family-card' }, [
+            Utils.createElement('div', { className: 'blocked-family-header' }, [
+                Utils.createElement('div', { className: 'blocked-family-id' }, 
+                    `Family #${entry.family_id}`),
+                Utils.createElement('span', { 
+                    className: `blocked-family-origin ${entry.origin}` 
+                }, entry.origin)
+            ]),
+            Utils.createElement('div', { className: 'blocked-species-list' }, speciesBadges),
+            Utils.createElement('div', { className: 'blocked-family-time' }, 
+                Utils.formatRelativeTime(entry.created_at))
+        ]);
+    }
+    
+    /**
+     * Update timeline UI
+     */
+    updateTimelineUI() {
+        const timelineContent = document.getElementById('timelineContent');
+        const timelineCount = document.getElementById('timelineCount');
+        
+        if (!timelineContent) return;
+        
+        // Combine cached encounters with event history from WebSocket
+        const allEvents = [...this.cache.encounters, ...this.eventHistory]
+            .sort((a, b) => new Date(b.timestamp || b.time) - new Date(a.timestamp || a.time));
+        
+        // Apply current filters
+        const eventFilter = document.getElementById('timelineFilter')?.value || 'all';
+        const playerFilter = document.getElementById('timelinePlayer')?.value || 'all';
+        
+        const filteredEvents = this.filterTimelineEvents(allEvents, eventFilter, playerFilter);
+        
+        // Update count
+        if (timelineCount) {
+            timelineCount.textContent = filteredEvents.length;
+        }
+        
+        timelineContent.innerHTML = '';
+        
+        if (filteredEvents.length === 0) {
+            timelineContent.appendChild(
+                Utils.createElement('div', { className: 'events-empty' }, 
+                    'No events match the current filters.')
+            );
+            return;
+        }
+        
+        // Limit to 50 events for performance
+        const limitedEvents = filteredEvents.slice(0, 50);
+        
+        limitedEvents.forEach(event => {
+            const timelineEvent = this.createTimelineEvent(event);
+            timelineContent.appendChild(timelineEvent);
+        });
+    }
+    
+    /**
+     * Filter timeline events
+     * @param {Array} events - All events
+     * @param {string} eventFilter - Event type filter
+     * @param {string} playerFilter - Player filter
+     * @returns {Array} Filtered events
+     */
+    filterTimelineEvents(events, eventFilter, playerFilter) {
+        let filtered = events;
+        
+        // Filter by event type
+        if (eventFilter !== 'all') {
+            filtered = filtered.filter(event => {
+                const eventType = event.type || (event.status === 'caught' ? 'caught' : 'encounter');
+                return eventType === eventFilter;
+            });
+        }
+        
+        // Filter by player
+        if (playerFilter !== 'all') {
+            filtered = filtered.filter(event => event.player_id === playerFilter);
+        }
+        
+        return filtered;
+    }
+    
+    /**
+     * Create timeline event element
+     * @param {Object} event - Event data
+     * @returns {HTMLElement} Timeline event element
+     */
+    createTimelineEvent(event) {
+        const eventType = event.type || (event.status === 'caught' ? 'caught' : 'encounter');
+        const timestamp = event.timestamp || event.time || new Date().toISOString();
+        const player = this.cache.players.find(p => p.id === event.player_id);
+        
+        let title, description;
+        
+        switch (eventType) {
+            case 'encounter':
+                title = `Wild ${Utils.getPokemonName(event.species_id)} appeared!`;
+                description = `Level ${event.level} • ${Utils.getRouteName(event.route_id)}`;
+                if (event.method) {
+                    description += ` • ${Utils.snakeToTitle(event.method)}`;
+                }
+                if (event.shiny) {
+                    description += ' • ✨ Shiny';
+                }
+                break;
+            case 'caught':
+                title = `${Utils.getPokemonName(event.species_id)} was caught!`;
+                description = `Level ${event.level} • ${Utils.getRouteName(event.route_id)}`;
+                if (event.shiny) {
+                    description += ' • ✨ Shiny';
+                }
+                break;
+            case 'faint':
+                title = 'Pokemon fainted';
+                description = event.pokemon_key || 'Unknown Pokemon';
+                break;
+            default:
+                title = Utils.snakeToTitle(eventType);
+                description = 'Event occurred';
+        }
+        
+        const timelineEvent = Utils.createElement('div', { 
+            className: `timeline-event ${eventType}`,
+            data: { eventId: event.id }
+        }, [
+            Utils.createElement('div', { className: 'timeline-event-time' }, 
+                new Date(timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                })
+            ),
+            Utils.createElement('div', { className: `timeline-event-icon ${eventType}` }, 
+                Utils.getEventIcon(eventType)
+            ),
+            Utils.createElement('div', { className: 'timeline-event-details' }, [
+                Utils.createElement('div', { className: 'timeline-event-title' }, title),
+                Utils.createElement('div', { className: 'timeline-event-description' }, description)
+            ]),
+            Utils.createElement('div', { className: 'timeline-event-player' }, 
+                player?.name || 'Unknown Player')
+        ]);
+        
+        // Add click handler for event details
+        timelineEvent.addEventListener('click', () => {
+            this.showEventDetails(event);
+        });
+        
+        return timelineEvent;
+    }
+    
+    /**
+     * Setup filter event listeners
+     */
+    setupFilterEventListeners() {
+        const blocklistFilter = document.getElementById('blocklistFilter');
+        const timelineFilter = document.getElementById('timelineFilter');
+        const timelinePlayer = document.getElementById('timelinePlayer');
+        
+        if (blocklistFilter && !blocklistFilter.hasAttribute('data-listener-added')) {
+            blocklistFilter.addEventListener('change', () => {
+                this.updateBlocklistUI();
+            });
+            blocklistFilter.setAttribute('data-listener-added', 'true');
+        }
+        
+        if (timelineFilter && !timelineFilter.hasAttribute('data-listener-added')) {
+            timelineFilter.addEventListener('change', () => {
+                this.updateTimelineUI();
+            });
+            timelineFilter.setAttribute('data-listener-added', 'true');
+        }
+        
+        if (timelinePlayer && !timelinePlayer.hasAttribute('data-listener-added')) {
+            timelinePlayer.addEventListener('change', () => {
+                this.updateTimelineUI();
+            });
+            timelinePlayer.setAttribute('data-listener-added', 'true');
+            
+            // Populate player options
+            this.updatePlayerFilterOptions();
+        }
+    }
+    
+    /**
+     * Update player filter options
+     */
+    updatePlayerFilterOptions() {
+        const timelinePlayer = document.getElementById('timelinePlayer');
+        if (!timelinePlayer) return;
+        
+        // Save current selection
+        const currentValue = timelinePlayer.value;
+        
+        // Clear existing options except "All Players"
+        timelinePlayer.innerHTML = '<option value="all">All Players</option>';
+        
+        // Add player options
+        this.cache.players.forEach(player => {
+            const option = document.createElement('option');
+            option.value = player.id;
+            option.textContent = player.name;
+            timelinePlayer.appendChild(option);
+        });
+        
+        // Restore selection if still valid
+        if (currentValue && timelinePlayer.querySelector(`option[value="${currentValue}"]`)) {
+            timelinePlayer.value = currentValue;
+        }
+    }
+    
+    /**
      * Show event details modal
      * @param {Object} event - Event data
      */
@@ -756,6 +1138,135 @@ class SoulLinkDashboard {
     }
     
     /**
+     * Show run selector modal
+     */
+    async showRunSelector() {
+        const modal = document.getElementById('runSelectorModal');
+        const runSelect = document.getElementById('runSelectModal');
+        
+        if (!modal || !runSelect) return;
+        
+        // Load available runs
+        try {
+            const response = await fetch(`${this.apiUrl}/v1/admin/runs`);
+            if (response.ok) {
+                const runs = await response.json();
+                
+                runSelect.innerHTML = '<option value="">Select a run...</option>';
+                runs.forEach(run => {
+                    const option = document.createElement('option');
+                    option.value = run.id;
+                    option.textContent = run.name;
+                    if (run.id === this.runId) {
+                        option.textContent += ' (current)';
+                        option.selected = true;
+                    }
+                    runSelect.appendChild(option);
+                });
+            } else {
+                runSelect.innerHTML = '<option value="">Failed to load runs</option>';
+            }
+        } catch (error) {
+            console.error('Error loading runs:', error);
+            runSelect.innerHTML = '<option value="">Error loading runs</option>';
+        }
+        
+        modal.classList.add('show');
+    }
+    
+    /**
+     * Hide run selector modal
+     */
+    hideRunSelector() {
+        const modal = document.getElementById('runSelectorModal');
+        if (modal) {
+            modal.classList.remove('show');
+        }
+    }
+    
+    /**
+     * Handle switching to selected run
+     */
+    handleSwitchToRun() {
+        const runSelect = document.getElementById('runSelectModal');
+        if (!runSelect || !runSelect.value) {
+            return;
+        }
+        
+        const selectedRunId = runSelect.value;
+        if (selectedRunId === this.runId) {
+            this.hideRunSelector();
+            return;
+        }
+        
+        this.switchRun(selectedRunId);
+        this.hideRunSelector();
+    }
+    
+    /**
+     * Check if user is authenticated and redirect if not
+     * @returns {boolean} Whether user is authenticated
+     */
+    checkAuthentication() {
+        const sessionData = this.getSessionData();
+        
+        if (!sessionData.sessionToken || !sessionData.runId || !sessionData.playerId) {
+            // No valid session - redirect to player setup
+            console.log('No valid session found, redirecting to player setup');
+            this.redirectToPlayerSetup();
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Get session data from localStorage
+     * @returns {Object} Session data object
+     */
+    getSessionData() {
+        return {
+            sessionToken: localStorage.getItem('soullink_session_token') || localStorage.getItem('sessionToken'),
+            runId: localStorage.getItem('soullink_run_id'),
+            playerId: localStorage.getItem('soullink_player_id'),
+            runName: localStorage.getItem('soullink_run_name'),
+            playerName: localStorage.getItem('soullink_player_name')
+        };
+    }
+    
+    /**
+     * Redirect to player setup page
+     */
+    redirectToPlayerSetup() {
+        const currentUrl = new URL(window.location.href);
+        const apiParam = currentUrl.searchParams.get('api');
+        
+        let playerUrl = '/player.html';
+        if (apiParam) {
+            playerUrl += `?api=${encodeURIComponent(apiParam)}`;
+        }
+        
+        window.location.href = playerUrl;
+    }
+    
+    /**
+     * Logout and clear session data
+     */
+    logout() {
+        // Clear all session data
+        localStorage.removeItem('soullink_session_token');
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('soullink_run_id');
+        localStorage.removeItem('soullink_player_id');
+        localStorage.removeItem('soullink_run_name');
+        localStorage.removeItem('soullink_player_name');
+        localStorage.removeItem('soullink_player_token'); // Legacy
+        
+        // Redirect to player setup
+        this.redirectToPlayerSetup();
+    }
+    
+    /**
      * Cleanup resources
      */
     destroy() {
@@ -773,14 +1284,306 @@ class SoulLinkDashboard {
         document.removeEventListener('soullink:faint', this.handleRealtimeFaint);
         document.removeEventListener('soullink:soul_link', this.handleRealtimeSoulLink);
     }
+    
+    /**
+     * Setup filter event listeners for timeline and blocklist
+     */
+    setupFilterEventListeners() {
+        // Timeline filter buttons
+        document.querySelectorAll('.timeline-filters .filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const filter = e.target.dataset.filter;
+                this.filters.timeline.type = filter;
+                
+                // Update active button
+                e.target.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                this.updateTimelineUI();
+            });
+        });
+        
+        // Player filter select
+        const playerFilter = document.getElementById('playerFilter');
+        if (playerFilter) {
+            playerFilter.addEventListener('change', (e) => {
+                this.filters.timeline.player = e.target.value;
+                this.updateTimelineUI();
+            });
+        }
+        
+        // Blocklist filter buttons
+        document.querySelectorAll('.blocklist-filters .filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const filter = e.target.dataset.filter;
+                this.filters.blocklist.reason = filter;
+                
+                // Update active button
+                e.target.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                this.updateBlocklistUI();
+            });
+        });
+    }
+    
+    /**
+     * Update timeline UI with filtered events
+     */
+    updateTimelineUI() {
+        const timelineList = document.getElementById('timelineList');
+        const timelineEmpty = document.getElementById('timelineEmpty');
+        
+        if (!timelineList) return;
+        
+        // Filter encounters based on current filters
+        const filteredEvents = this.filterTimelineEvents();
+        
+        if (filteredEvents.length === 0) {
+            timelineList.style.display = 'none';
+            timelineEmpty.style.display = 'block';
+            return;
+        }
+        
+        timelineList.style.display = 'block';
+        timelineEmpty.style.display = 'none';
+        
+        // Sort by timestamp descending (newest first)
+        filteredEvents.sort((a, b) => new Date(b.time || b.created_at) - new Date(a.time || a.created_at));
+        
+        timelineList.innerHTML = filteredEvents.map(event => this.createTimelineEvent(event)).join('');
+    }
+    
+    /**
+     * Filter timeline events based on current filter settings
+     */
+    filterTimelineEvents() {
+        const { type, player } = this.filters.timeline;
+        let events = [...this.cache.encounters];
+        
+        // Add artificial event types for better UX
+        events = events.map(encounter => {
+            let eventType = 'encounter';
+            if (encounter.status === 'caught') eventType = 'catch';
+            if (encounter.status === 'fainted') eventType = 'faint';
+            
+            return { ...encounter, eventType };
+        });
+        
+        // Filter by event type
+        if (type !== 'all') {
+            events = events.filter(event => event.eventType === type);
+        }
+        
+        // Filter by player
+        if (player !== 'all') {
+            events = events.filter(event => event.player_id === player);
+        }
+        
+        return events;
+    }
+    
+    /**
+     * Create HTML for a timeline event
+     */
+    createTimelineEvent(event) {
+        const eventType = event.eventType || 'encounter';
+        const player = this.cache.players.find(p => p.id === event.player_id);
+        const playerName = player ? player.name : 'Unknown Player';
+        
+        const icons = {
+            encounter: '👁️',
+            catch: '⚾',
+            faint: '💀'
+        };
+        
+        const timeAgo = this.getTimeAgo(event.time || event.created_at);
+        
+        return `
+            <div class="timeline-event ${eventType}">
+                <div class="timeline-icon ${eventType}">
+                    ${icons[eventType]}
+                </div>
+                <div class="timeline-details">
+                    <div class="timeline-header">
+                        <div class="timeline-title">${event.species_name || 'Unknown Pokemon'}</div>
+                        <div class="timeline-time">${timeAgo}</div>
+                    </div>
+                    <div class="timeline-description">
+                        ${this.getEventDescription(event, playerName)}
+                    </div>
+                    <div class="timeline-meta">
+                        <span class="timeline-tag">Route ${event.route_id}</span>
+                        <span class="timeline-tag">Level ${event.level}</span>
+                        ${event.shiny ? '<span class="timeline-tag">✨ Shiny</span>' : ''}
+                        ${event.encounter_method ? `<span class="timeline-tag">${event.encounter_method}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    /**
+     * Get descriptive text for an event
+     */
+    getEventDescription(event, playerName) {
+        const speciesName = event.species_name || 'Unknown Pokemon';
+        const eventType = event.eventType || 'encounter';
+        
+        switch (eventType) {
+            case 'encounter':
+                return `${playerName} encountered ${speciesName} on Route ${event.route_id}`;
+            case 'catch':
+                return `${playerName} caught ${speciesName}! Added to the team.`;
+            case 'faint':
+                return `${playerName}'s ${speciesName} fainted in battle. RIP.`;
+            default:
+                return `${playerName} had an event with ${speciesName}`;
+        }
+    }
+    
+    /**
+     * Update blocklist UI with filtered families
+     */
+    updateBlocklistUI() {
+        const blocklistGrid = document.getElementById('blocklistGrid');
+        const blocklistEmpty = document.getElementById('blocklistEmpty');
+        
+        if (!blocklistGrid) return;
+        
+        // Filter blocklist based on current filters
+        const filteredFamilies = this.filterBlocklistFamilies();
+        
+        if (filteredFamilies.length === 0) {
+            blocklistGrid.style.display = 'none';
+            blocklistEmpty.style.display = 'block';
+            return;
+        }
+        
+        blocklistGrid.style.display = 'grid';
+        blocklistEmpty.style.display = 'none';
+        
+        blocklistGrid.innerHTML = filteredFamilies.map(family => this.createBlocklistFamily(family)).join('');
+    }
+    
+    /**
+     * Filter blocklist families based on current filter settings
+     */
+    filterBlocklistFamilies() {
+        const { reason } = this.filters.blocklist;
+        let families = [...this.cache.blocklist];
+        
+        if (reason !== 'all') {
+            families = families.filter(family => family.origin === reason);
+        }
+        
+        return families;
+    }
+    
+    /**
+     * Create HTML for a blocklist family
+     */
+    createBlocklistFamily(family) {
+        const reasonClass = family.origin === 'caught' ? 'caught' : 'encounter';
+        const reasonText = family.origin === 'caught' ? 'Caught' : 'Encountered';
+        const timeAgo = this.getTimeAgo(family.created_at);
+        
+        return `
+            <div class="blocklist-family ${reasonClass}">
+                <div class="blocklist-header">
+                    <div class="family-name">${family.family_name || 'Unknown Family'}</div>
+                    <div class="block-reason ${reasonClass}">${reasonText}</div>
+                </div>
+                <div class="species-list">
+                    ${(family.species || []).map(species => 
+                        `<span class="species-badge">${species}</span>`
+                    ).join('')}
+                </div>
+                <div class="block-details">
+                    Blocked ${timeAgo} • Evolution family no longer available for any player
+                </div>
+            </div>
+        `;
+    }
+    
+    /**
+     * Get human-readable time difference
+     */
+    getTimeAgo(timestamp) {
+        if (!timestamp) return 'Unknown time';
+        
+        const now = new Date();
+        const time = new Date(timestamp);
+        const diffMs = now - time;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        
+        return time.toLocaleDateString();
+    }
+    
+    /**
+     * Update player filter dropdown with current players
+     */
+    updatePlayerFilter() {
+        const playerFilter = document.getElementById('playerFilter');
+        if (!playerFilter) return;
+        
+        const currentValue = playerFilter.value;
+        playerFilter.innerHTML = '<option value="all">All Players</option>';
+        
+        this.cache.players.forEach(player => {
+            const option = document.createElement('option');
+            option.value = player.id;
+            option.textContent = player.name;
+            if (player.id === currentValue) option.selected = true;
+            playerFilter.appendChild(option);
+        });
+    }
 }
+
+// Global functions for HTML onclick handlers (define immediately)
+window.showRunSelector = function() {
+    if (window.soulLinkDashboard) {
+        window.soulLinkDashboard.showRunSelector();
+    } else {
+        // Fallback: create a simple run selector modal
+        console.log('Dashboard not ready, opening admin panel');
+        window.open('/admin', '_blank');
+    }
+};
+
+window.hideRunSelector = function() {
+    if (window.soulLinkDashboard) {
+        window.soulLinkDashboard.hideRunSelector();
+    }
+};
+
+// Authentication setup functions
+window.showTokenSetup = function() {
+    // Redirect to player setup page for login
+    window.location.href = '/player.html';
+};
+
+window.hideTokenSetup = function() {
+    // Legacy function - no longer needed with new auth system
+};
+
+window.saveToken = function() {
+    // Legacy function - no longer needed with new auth system
+    Utils.showError('Please use the player setup page to login');
+};
 
 // Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.soulLinkDashboard = new SoulLinkDashboard();
 });
 
-// Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     if (window.soulLinkDashboard) {
         window.soulLinkDashboard.destroy();

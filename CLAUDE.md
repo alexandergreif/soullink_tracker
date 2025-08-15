@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Claude Code Specialized Agents
+
+Claude Code has access to specialized agents that can be called with the Task tool using the appropriate `subagent_type`:
+
+- **general-purpose**: Research complex questions, search for code, execute multi-step tasks. Use when searching for keywords/files across large codebases
+- **statusline-setup**: Configure Claude Code status line settings (Tools: Read, Edit)
+- **output-mode-setup**: Create Claude Code output modes (Tools: Read, Write, Edit, Glob, LS)
+- **frontend-developer**: Build React components, responsive layouts, client-side state management. Use PROACTIVELY for UI components and frontend issues (Tools: *)
+- **expert-troubleshooter**: Debug bugs, test failures, error messages, stack traces, performance regressions. Use for failing tests, Flask errors, database issues, linting failures (Tools: *)
+- **ui-ux-designer**: Create interface designs, wireframes, design systems, user research, prototyping, accessibility. Use PROACTIVELY for design systems and user flows (Tools: *)
+- **security-auditor**: Review code for vulnerabilities, secure authentication, OWASP compliance, JWT, OAuth2, CORS, CSP. Use PROACTIVELY for security reviews (Tools: *)
+- **architect-reviewer**: Review code changes for architectural consistency, SOLID principles, proper layering. Use PROACTIVELY after structural changes (Tools: *)
+- **test-automator**: Create comprehensive test suites, CI pipelines, mocking strategies, test data. Use PROACTIVELY for test coverage improvement (Tools: *)
+- **code-reviewer**: Expert code review for quality, security, maintainability. Use PROACTIVELY immediately after writing/modifying code (Tools: *)
+
 # Pokemon SoulLink HG/SS Tracker - Claude Project Context
 
 ## Project Overview
@@ -254,7 +269,7 @@ cloudflared tunnel --url http://127.0.0.1:8000
 
 1. **Always start with tests** - Write failing tests first
 2. **Use Ref MCP server** to get latest documentation before coding
-3. **Use repoprompt** for context management and token optimization  
+3. **Always use repoprompt** for context management and token optimization and file operations like read, write, update etc.
 4. **Use Playwright** for UI debugging and testing
 5. **Run linting/typecheck** before committing any code
 6. **Test coverage** must be maintained at ≥90%

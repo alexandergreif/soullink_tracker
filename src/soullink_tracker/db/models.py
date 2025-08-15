@@ -61,6 +61,8 @@ class Run(Base):
     id = Column(GUID(), primary_key=True, default=uuid4)
     name = Column(String(255), nullable=False)
     rules_json = Column(JSON, nullable=False, default=dict)
+    password_hash = Column(String(255), nullable=True)  # Password-based auth
+    password_salt = Column(String(64), nullable=True)   # Salt for password hashing
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -69,6 +71,7 @@ class Run(Base):
 
     # Relationships
     players = relationship("Player", back_populates="run", cascade="all, delete-orphan")
+    sessions = relationship("PlayerSession", back_populates="run", cascade="all, delete-orphan")
     encounters = relationship(
         "Encounter", back_populates="run", cascade="all, delete-orphan"
     )
@@ -106,6 +109,7 @@ class Player(Base):
 
     # Relationships
     run = relationship("Run", back_populates="players")
+    sessions = relationship("PlayerSession", back_populates="player", cascade="all, delete-orphan")
     encounters = relationship(
         "Encounter", back_populates="player", cascade="all, delete-orphan"
     )
@@ -185,6 +189,41 @@ class Player(Base):
 
     def __repr__(self) -> str:
         return f"<Player(id={self.id}, name='{self.name}', game='{self.game}')>"
+
+
+class PlayerSession(Base):
+    """Session tokens for player authentication."""
+
+    __tablename__ = "player_sessions"
+
+    id = Column(GUID(), primary_key=True, default=uuid4)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    run_id = Column(GUID(), ForeignKey("runs.id"), nullable=False)
+    player_id = Column(GUID(), ForeignKey("players.id"), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    last_seen_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationships
+    run = relationship("Run", back_populates="sessions")
+    player = relationship("Player", back_populates="sessions")
+
+    __table_args__ = (
+        Index("ix_player_session_token_hash", "token_hash"),
+        Index("ix_player_session_expires_at", "expires_at"),
+        Index("ix_player_session_run_player", "run_id", "player_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PlayerSession(id={self.id}, player_id={self.player_id}, expires_at={self.expires_at})>"
 
 
 class Species(Base):

@@ -189,6 +189,22 @@ class WebSocketClient {
             wasClean: event.wasClean
         });
         
+        // Handle authentication-related close codes
+        if (event.code === 4001) {
+            console.error('WebSocket authentication failed. Check your login credentials.');
+            this.emit('auth_error', { reason: event.reason });
+            // Don't try to reconnect on auth failures
+            return;
+        } else if (event.code === 4003) {
+            console.error('Player not authorized for this run.');
+            this.emit('auth_error', { reason: event.reason });
+            return;
+        } else if (event.code === 4004) {
+            console.error('Run not found.');
+            this.emit('auth_error', { reason: event.reason });
+            return;
+        }
+        
         if (this.shouldReconnect && !event.wasClean) {
             this.scheduleReconnect();
         }
@@ -281,9 +297,12 @@ class SoulLinkWebSocket {
     constructor(apiUrl, runId, options = {}) {
         this.apiUrl = apiUrl;
         this.runId = runId;
-        this.wsUrl = this.buildWebSocketUrl();
         
-        this.client = new WebSocketClient(this.wsUrl, {
+        // Don't build URL immediately - wait for connection attempt
+        this.wsUrl = null;
+        this.authError = null;
+        
+        this.client = new WebSocketClient('', {
             debug: true,
             ...options
         });
@@ -306,7 +325,62 @@ class SoulLinkWebSocket {
     buildWebSocketUrl() {
         const url = new URL(this.apiUrl);
         const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${wsProtocol}//${url.host}/v1/ws/${this.runId}`;
+        
+        // Get session token from localStorage with improved error handling
+        const sessionToken = this.retrieveBearerToken();
+        if (!sessionToken) {
+            console.error('No valid session token found. WebSocket connection will fail.');
+            throw new Error('Authentication token required for WebSocket connection');
+        }
+        
+        return `${wsProtocol}//${url.host}/v1/ws?run_id=${this.runId}&token=${encodeURIComponent(sessionToken)}`;
+    }
+    
+    /**
+     * Retrieve and validate session token from localStorage
+     * @returns {string|null} Valid session token or null if not found/invalid
+     */
+    retrieveBearerToken() {
+        // Priority order for session token retrieval
+        const possibleKeys = [
+            'soullink_session_token',    // New session token system (highest priority)
+            'sessionToken',              // Alternative session token key
+            'playerToken',               // Legacy Bearer token (fallback)
+            'bearer_token',              // Legacy variations
+            'authToken'
+        ];
+        
+        for (const key of possibleKeys) {
+            const savedToken = localStorage.getItem(key);
+            if (!savedToken) continue;
+            
+            let extractedToken = null;
+            
+            // Handle plain token string
+            if (typeof savedToken === 'string' && savedToken.length > 10) {
+                extractedToken = savedToken.trim();
+            }
+            
+            // Handle JSON format
+            try {
+                const tokenData = JSON.parse(savedToken);
+                if (tokenData && tokenData.token && typeof tokenData.token === 'string') {
+                    extractedToken = tokenData.token.trim();
+                }
+            } catch (e) {
+                // Not JSON, use string value
+            }
+            
+            // Validate token format
+            if (extractedToken && extractedToken.length >= 10 && !extractedToken.includes(' ')) {
+                console.log(`Found valid session token in localStorage key: ${key}`);
+                return extractedToken;
+            }
+        }
+        
+        console.error('No valid session token found in localStorage. Available keys:',
+                     Object.keys(localStorage).filter(k => k.toLowerCase().includes('token')));
+        return null;
     }
     
     /**
@@ -329,9 +403,19 @@ class SoulLinkWebSocket {
             this.updateConnectionStatus(false, `Reconnecting (${data.attempt})...`);
         });
         
+        this.client.on('auth_error', (error) => {
+            console.error('SoulLink WebSocket authentication error:', error);
+            this.updateConnectionStatus(false, 'Authentication Failed');
+            Utils.showError('Authentication failed. Please check your login credentials or contact admin.');
+        });
+        
         this.client.on('error', (error) => {
             console.error('SoulLink WebSocket error:', error);
-            Utils.showError('Connection error occurred');
+            if (error.type === 'connection_error') {
+                Utils.showError('Connection error occurred. Check your login credentials.');
+            } else {
+                Utils.showError('Connection error occurred');
+            }
         });
         
         // SoulLink-specific events
@@ -365,6 +449,33 @@ class SoulLinkWebSocket {
      * Connect to WebSocket
      */
     connect() {
+        // Build WebSocket URL at connection time to ensure Utils is available
+        if (!this.wsUrl) {
+            try {
+                this.wsUrl = this.buildWebSocketUrl();
+                console.log('WebSocket URL built successfully:', this.wsUrl);
+            } catch (error) {
+                console.error('Failed to build WebSocket URL:', error.message);
+                this.authError = error.message;
+                this.updateConnectionStatus(false, 'Authentication Error');
+                
+                // Show user-friendly error
+                if (typeof Utils !== 'undefined' && Utils.showError) {
+                    Utils.showError('Please log in to enable real-time updates. Visit the Player Setup page to enter your login credentials.');
+                }
+                return;
+            }
+        }
+        
+        // Update the client's URL
+        this.client.url = this.wsUrl;
+        
+        if (!this.client) {
+            console.error('Cannot connect: WebSocket client not initialized');
+            this.updateConnectionStatus(false, 'Client Error');
+            return;
+        }
+        
         this.client.connect();
     }
     
@@ -372,7 +483,9 @@ class SoulLinkWebSocket {
      * Disconnect from WebSocket
      */
     disconnect() {
-        this.client.disconnect();
+        if (this.client) {
+            this.client.disconnect();
+        }
     }
     
     /**

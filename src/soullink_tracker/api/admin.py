@@ -1,5 +1,7 @@
 """Admin endpoints for v3 event store management and secure token system."""
 
+import logging
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from typing import Dict, Any
 
@@ -19,18 +21,57 @@ from .schemas import (
     PlayerCreate,
     PlayerWithTokenResponse,
 )
+from typing import List
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
 
 def require_localhost(request: Request):
     """Dependency to restrict admin endpoints to localhost only."""
-    if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+    client_host = request.client.host if request.client else None
+    
+    # Check both IPv4 and IPv6 localhost addresses
+    localhost_ips = {"127.0.0.1", "::1"}
+    
+    if client_host not in localhost_ips:
+        logger.warning(f"Admin API access denied from {client_host}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin API only available on localhost"
+            detail="Admin API only available from localhost"
         )
     return True
+
+
+@router.get(
+    "/runs",
+    response_model=List[RunResponse],
+    responses={
+        200: {"description": "List of all runs"},
+        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+    },
+)
+def list_runs(
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
+) -> List[RunResponse]:
+    """
+    List all SoulLink runs.
+
+    This is an admin-only endpoint that returns all runs in the system.
+    """
+    try:
+        runs = db.query(Run).order_by(Run.created_at.desc()).all()
+        return [RunResponse.model_validate(run) for run in runs]
+
+    except Exception as e:
+        logger.error(f"Failed to list runs: {str(e)}")
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail="Unable to retrieve runs. Please check server logs for details.",
+        )
 
 
 @router.post(
@@ -40,10 +81,16 @@ def require_localhost(request: Request):
     responses={
         201: {"description": "Run created successfully"},
         400: {"model": ProblemDetails, "description": "Invalid request"},
+        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
         422: {"model": ProblemDetails, "description": "Validation error"},
     },
 )
-def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunResponse:
+def create_run(
+    run_data: RunCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
+) -> RunResponse:
     """
     Create a new SoulLink run.
 
@@ -51,8 +98,20 @@ def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunRespons
     have players added to it via the player creation endpoint.
     """
     try:
+        # Hash the password if provided
+        password_salt = None
+        password_hash = None
+        if hasattr(run_data, 'password') and run_data.password:
+            from ..auth.security import hash_password
+            password_salt, password_hash = hash_password(run_data.password)
+        
         # Create new run
-        new_run = Run(name=run_data.name, rules_json=run_data.rules_json)
+        new_run = Run(
+            name=run_data.name,
+            rules_json=run_data.rules_json,
+            password_salt=password_salt,
+            password_hash=password_hash
+        )
 
         db.add(new_run)
         db.commit()
@@ -62,10 +121,11 @@ def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunRespons
 
     except Exception as e:
         db.rollback()
+        logger.error(f"Failed to create run: {str(e)}")
         raise ProblemDetailsException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             title="Internal Server Error",
-            detail=f"Failed to create run: {str(e)}",
+            detail="Unable to create run. Please check server logs for details.",
         )
 
 
@@ -147,10 +207,63 @@ def create_player(
 
     except Exception as e:
         db.rollback()
+        logger.error(f"Failed to create player: {str(e)}")
         raise ProblemDetailsException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             title="Internal Server Error",
-            detail=f"Failed to create player: {str(e)}",
+            detail="Unable to create player. Please check server logs for details.",
+        )
+
+
+@router.post(
+    "/players/{player_id}/token",
+    responses={
+        200: {"description": "Token generated successfully"},
+        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        404: {"model": ProblemDetails, "description": "Player not found"},
+    },
+)
+def generate_player_token(
+    player_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
+) -> Dict[str, Any]:
+    """
+    Generate a new token for an existing player.
+
+    This is an admin-only endpoint that generates a new token for a player.
+    **IMPORTANT: The token is only shown once and cannot be retrieved again.**
+    """
+    # Verify the player exists
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        raise ProblemDetailsException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Player Not Found",
+            detail=f"Player with ID {player_id} does not exist",
+        )
+
+    try:
+        # Generate new token and update player
+        new_token = player.rotate_token()
+        db.commit()
+
+        return {
+            "message": "Token generated successfully",
+            "player_id": str(player.id),
+            "player_name": player.name,
+            "bearer_token": new_token,
+            "warning": "This token will only be displayed once. Store it securely.",
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to generate token: {str(e)}")
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail="Unable to generate token. Please check server logs for details.",
         )
 
 
@@ -241,6 +354,130 @@ def rebuild_projections(run_id: UUID, db: Session = Depends(get_db)) -> Dict[str
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             title="Internal Server Error",
             detail=f"Unexpected error during projection rebuild: {e}",
+        )
+
+
+@router.get(
+    "/players/stats",
+    responses={
+        200: {"description": "Player statistics across all runs"},
+        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+    },
+)
+def get_player_statistics(
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
+) -> Dict[str, Any]:
+    """
+    Get player statistics across all runs.
+
+    This admin endpoint returns summary statistics about all players
+    in the system including total count, active players, and last activity.
+    """
+    try:
+        from sqlalchemy import func
+        from ..db.models import PlayerSession
+
+        # Get total player count
+        total_players = db.query(func.count(Player.id)).scalar()
+
+        # Get active players (those with sessions in last 5 minutes)
+        five_minutes_ago = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
+        active_players = db.query(func.count(func.distinct(PlayerSession.player_id))).filter(
+            PlayerSession.last_seen_at >= five_minutes_ago
+        ).scalar()
+
+        # Get latest activity timestamp
+        latest_activity = db.query(func.max(PlayerSession.last_seen_at)).scalar()
+
+        return {
+            "total": total_players or 0,
+            "active": active_players or 0,
+            "last_activity": latest_activity.isoformat() if latest_activity else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get player statistics: {str(e)}")
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail="Unable to retrieve player statistics. Please check server logs for details.",
+        )
+
+
+@router.get(
+    "/players/global",
+    responses={
+        200: {"description": "List of all players across all runs"},
+        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+    },
+)
+def get_global_players(
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
+) -> List[Dict[str, Any]]:
+    """
+    Get all players across all runs with their associated run information.
+
+    This admin endpoint returns all players in the system along with their
+    run details, activity status, and other metadata useful for administration.
+    """
+    try:
+        from sqlalchemy import func
+        from ..db.models import PlayerSession
+
+        # Query players with their run information and latest session data
+        query = db.query(
+            Player.id,
+            Player.run_id,
+            Player.name,
+            Player.game,
+            Player.region,
+            Player.created_at,
+            Run.name.label("run_name"),
+            func.max(PlayerSession.last_seen_at).label("last_seen")
+        ).join(
+            Run, Player.run_id == Run.id
+        ).outerjoin(
+            PlayerSession, Player.id == PlayerSession.player_id
+        ).group_by(
+            Player.id,
+            Player.run_id,
+            Player.name,
+            Player.game,
+            Player.region,
+            Player.created_at,
+            Run.name
+        ).order_by(
+            Player.created_at.desc()
+        )
+
+        players = query.all()
+
+        # Convert to list of dictionaries
+        result = []
+        for player in players:
+            result.append({
+                "id": str(player.id),
+                "run_id": str(player.run_id),
+                "name": player.name,
+                "game": player.game,
+                "region": player.region,
+                "created_at": player.created_at.isoformat(),
+                "run_name": player.run_name,
+                "last_seen": player.last_seen.isoformat() if player.last_seen else None,
+            })
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get global players: {str(e)}")
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail="Unable to retrieve global players. Please check server logs for details.",
         )
 
 
