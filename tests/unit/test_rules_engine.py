@@ -183,7 +183,7 @@ class TestLegacyRulesEngine:
     def test_rules_engine_creation(self, mock_get_config):
         """Test creating a rules engine with database session."""
         mock_config = Mock()
-        mock_config.app.feature_v3_eventstore = False
+        mock_config.app.feature_v3_eventstore = True  # v3-only architecture
         mock_get_config.return_value = mock_config
         
         assert self.rules_engine is not None
@@ -369,7 +369,7 @@ class TestLegacyRulesEngine:
         mock_get_config.return_value = mock_config
         
         # Mock database queries - player2 has finalized encounter on different route (32)
-        route_progress = RouteProgress(
+        mock_config.app.feature_v3_eventstore = True  # v3-only architecture
             run_id=self.run_id,
             player_id=self.player2_id,
             route_id=32,  # Different route
@@ -555,7 +555,7 @@ class TestLegacyRulesEngine:
             family_id=1,
             blocklist=blocklist
         )
-        
+        mock_config.app.feature_v3_eventstore = True  # v3-only architecture
         assert result is False
 
     def test_create_soul_link_members(self):

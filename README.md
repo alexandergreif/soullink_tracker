@@ -28,26 +28,76 @@ Automatically tracks Pokemon encounters, catches, faints, and soul links across 
 - 🔒 **Secure**: JWT authentication per player
 - 🪟 **Windows Friendly**: One-click setup for non-technical users
 
-## 🆕 V3 New Features
+## 🆕 Key Features
 
-- 🔀 **Dual Architecture**: Separate admin and user executables
-- 📦 **Zero Installation**: Fully portable, no Python required
-- ⚡ **Optimized Performance**: Lightweight user client, full-featured admin server
-- 🔧 **Auto-Configuration**: User launcher sets up API URLs and directories automatically
-- 📁 **Smart Resource Management**: Role-based logging and data separation
-- 🎯 **System Tray Integration**: Easy access to Lua folder and logs
-- 🛠️ **Enhanced Build System**: Dual GitHub Actions releases
-- 🔒 **Environment-Based Config**: Secure, flexible configuration system
+- 🚀 **Simple Setup**: Single script to start everything
+- 🔑 **Easy Authentication**: Interactive token generation
+- 📊 **Admin Dashboard**: Web-based run management
+- 📱 **Real-time Sync**: Live updates across all players
+- 🔒 **Secure**: Token-based authentication
+- 📈 **SQLite Database**: No complex database setup required
+- 🔄 **Auto-migrations**: Database updates handled automatically
+- 🎯 **Developer-friendly**: Hot reload during development
 
 ## 🚀 Quick Start
 
-### 🪟 Windows Users (Recommended)
+### Simple Setup (One Script)
 
-**SoulLink Tracker V3 now provides TWO separate applications:**
+**Step 1: Start the Server**
+```bash
+python start_server.py
+```
+This will:
+- Run database migrations
+- Load reference data
+- Start the admin server at `http://127.0.0.1:8000`
+- Open the admin panel in your browser
 
-#### 📊 **Admin Version** (For Run Organizers)
-- Runs the server, database, and web dashboard
-- Manages players and run configuration
+**Step 2: Create Runs and Players**
+1. Open the admin panel: `http://127.0.0.1:8000/admin`
+2. Create a new run with a password
+3. Add players to the run
+4. Share run info with players: run name + password
+
+### 🔑 Authentication Workflow
+
+**For Admin (Run Organizer):**
+1. Start server: `python start_server.py`
+2. Open admin panel: `http://127.0.0.1:8000/admin`
+3. Create run with password
+4. Add players (name, game version, region)
+5. Share with players: run name + password
+
+**For Players (Watcher Setup):**
+1. Get from admin: run name + password
+2. Configure watcher with:
+   - **Server URL**: `http://127.0.0.1:8000`
+   - **Run Name**: (from admin)
+   - **Player Name**: (your name in the run)
+   - **Password**: (run password from admin)
+3. Watcher automatically logs in via `/v1/auth/login`
+
+**Security:**
+- Password-based authentication per run
+- Automatic session token generation
+- No complex token management needed
+
+### 📱 Example Watcher Configuration
+
+```json
+{
+  "server_url": "http://127.0.0.1:8000",
+  "run_name": "Epic SoulLink Adventure",
+  "player_name": "Alice",
+  "password": "myrunpassword123"
+}
+```
+
+Watcher login process:
+1. POST `/v1/auth/login` with above credentials
+2. Receive session token automatically
+3. Use token for all subsequent API calls
+4. Token expires after 30 days (configurable)
 - **Download**: `soullink-tracker-admin-v3.0.0-windows-x64.zip`
 
 #### 🎮 **User Version** (For Players)

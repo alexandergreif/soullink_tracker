@@ -27,7 +27,7 @@ from alembic.config import Config
 def pytest_configure(config):
     config.addinivalue_line("markers", "v2_only: Run test with V2-only configuration")
     config.addinivalue_line("markers", "v3_only: Run test with V3-only configuration")
-    config.addinivalue_line("markers", "dualwrite: Run test with V3 dual-write configuration")
+    # V3-only architecture - no dual-write marker needed
 
 # Global test state
 _test_db_url: Optional[str] = None
@@ -136,9 +136,8 @@ def setup_test_env():
         "TEST_DATABASE_URL": db_url,
         "SOULLINK_DB_URL": db_url,         # For Alembic scripts
         "SOULLINK_DATABASE_URL": db_url,   # For integration override compatibility
-        # Default to V3 event store enabled, dual-write disabled; tests can override per-scenario
-        "FEATURE_V3_EVENTSTORE": os.environ.get("FEATURE_V3_EVENTSTORE", "1"),
-        "FEATURE_V3_DUALWRITE": os.environ.get("FEATURE_V3_DUALWRITE", "0"),
+        # V3 event store is always enabled in v3-only architecture
+        "FEATURE_V3_EVENTSTORE": "1",
     }
     for key, value in env_vars.items():
         original_env[key] = os.environ.get(key)
@@ -248,13 +247,11 @@ def _get_fresh_app_and_deps() -> Tuple[Any, Callable, Callable]:
     return main_module.app, db_module.get_db, auth_deps.get_current_player
 
 @contextmanager
-def _client_context_for_feature_flags(test_db, feature_v3_eventstore: int, feature_v3_dualwrite: int):
-    """Context manager yielding a TestClient with given feature flags applied."""
+def _client_context_for_v3_only(test_db):
+    """Context manager yielding a TestClient with v3-only configuration."""
     old_eventstore = os.environ.get("FEATURE_V3_EVENTSTORE")
-    old_dualwrite = os.environ.get("FEATURE_V3_DUALWRITE")
 
-    os.environ["FEATURE_V3_EVENTSTORE"] = "1" if feature_v3_eventstore else "0"
-    os.environ["FEATURE_V3_DUALWRITE"] = "1" if feature_v3_dualwrite else "0"
+    os.environ["FEATURE_V3_EVENTSTORE"] = "1"  # Always enabled in v3-only
 
     app, get_db, _ = _get_fresh_app_and_deps()
 
@@ -315,41 +312,10 @@ async def _async_client_context_for_feature_flags(test_db, feature_v3_eventstore
         else:
             os.environ.pop("FEATURE_V3_DUALWRITE", None)
 
-@pytest.fixture
-def client_v2(test_db) -> Generator[TestClient, None, None]:
-    """FastAPI TestClient configured for V2-only (no v3 event store, no dual-write)."""
-    with _client_context_for_feature_flags(test_db, feature_v3_eventstore=0, feature_v3_dualwrite=0) as c:
-        yield c
+# V3-only architecture - legacy fixtures removed
+# Use the default 'client' fixture which uses v3-only configuration
 
-@pytest.fixture
-def client_v3(test_db) -> Generator[TestClient, None, None]:
-    """FastAPI TestClient configured for V3-only (event store enabled, no dual-write)."""
-    with _client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=0) as c:
-        yield c
-
-@pytest.fixture
-def client_dualwrite(test_db) -> Generator[TestClient, None, None]:
-    """FastAPI TestClient configured for dual-write (V2 + V3 in parallel)."""
-    with _client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=1) as c:
-        yield c
-
-@pytest_asyncio.fixture
-async def async_client_v2(test_db) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient configured for V2-only."""
-    async with _async_client_context_for_feature_flags(test_db, feature_v3_eventstore=0, feature_v3_dualwrite=0) as ac:
-        yield ac
-
-@pytest_asyncio.fixture
-async def async_client_v3(test_db) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient configured for V3-only."""
-    async with _async_client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=0) as ac:
-        yield ac
-
-@pytest_asyncio.fixture
-async def async_client_dualwrite(test_db) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient configured for dual-write (V2 + V3)."""
-    async with _async_client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=1) as ac:
-        yield ac
+# V3-only async clients - use default 'async_client' fixture
 
 # Test data fixtures for creating runs, players, etc.
 
@@ -537,17 +503,7 @@ def auth_client_v3(test_db, sample_player):
         finally:
             fresh_app.dependency_overrides.clear()
 
-@pytest.fixture
-def auth_client_dualwrite(test_db, sample_player):
-    """Authenticated TestClient for dual-write scenario."""
-    with _client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=1) as c:
-        _, _, get_current_player = _get_fresh_app_and_deps()
-        from soullink_tracker.main import app as fresh_app
-        fresh_app.dependency_overrides[get_current_player] = lambda: sample_player
-        try:
-            yield c
-        finally:
-            fresh_app.dependency_overrides.clear()
+# auth_client_dualwrite removed - use auth_client_v3 or default auth_client
 
 @pytest_asyncio.fixture
 async def auth_async_client(test_db, sample_player):
@@ -598,17 +554,7 @@ async def auth_async_client_v3(test_db, sample_player):
         finally:
             fresh_app.dependency_overrides.clear()
 
-@pytest_asyncio.fixture
-async def auth_async_client_dualwrite(test_db, sample_player):
-    """Authenticated AsyncClient for dual-write scenario."""
-    async with _async_client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=1) as ac:
-        _, _, get_current_player = _get_fresh_app_and_deps()
-        from soullink_tracker.main import app as fresh_app
-        fresh_app.dependency_overrides[get_current_player] = lambda: sample_player
-        try:
-            yield ac
-        finally:
-            fresh_app.dependency_overrides.clear()
+# auth_async_client_dualwrite removed - use auth_async_client_v3 or default
 
 # Markers for test organization
 pytestmark = pytest.mark.asyncio

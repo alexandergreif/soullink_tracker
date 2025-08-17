@@ -68,11 +68,7 @@ class AdminPanel {
             runSelect.addEventListener('change', (e) => this.handleRunSelection(e));
         }
         
-        // Modal close handlers
-        const tokenModalClose = document.getElementById('tokenModalClose');
-        if (tokenModalClose) {
-            tokenModalClose.addEventListener('click', () => this.hideTokenModal());
-        }
+        // Modal close handlers (token modal removed)
         
         // Toast close handlers
         const successToastClose = document.getElementById('successToastClose');
@@ -189,12 +185,7 @@ class AdminPanel {
             clearCacheBtn.addEventListener('click', () => this.clearApplicationCache());
         }
 
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.hideTokenModal();
-            }
-        });
+        // Keyboard shortcuts (removed token modal escape handling)
         
         // API URL display
         const apiUrlDisplay = document.getElementById('apiUrlDisplay');
@@ -502,8 +493,8 @@ class AdminPanel {
                     </p>
                 </div>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    <button class="btn btn-small btn-primary" onclick="adminPanel.generateTokenForPlayer('${player.id}', '${this.escapeHtml(player.name)}')">
-                        🔑 Get Token
+                    <button class="btn btn-small btn-danger" onclick="adminPanel.deletePlayer('${player.id}', '${this.escapeHtml(player.name)}')">
+                        🗑️ Delete
                     </button>
                     <span style="color: var(--success-color); font-size: 0.875rem; font-weight: 500;">Active</span>
                 </div>
@@ -569,8 +560,8 @@ class AdminPanel {
             // Reload players
             await this.loadPlayers(this.selectedRunId);
             
-            // Show token modal
-            this.showTokenModal(result.player, result.token);
+            // Show success message with player info
+            this.showSuccess(`Player "${result.name}" added successfully!`);
             
         } catch (error) {
             console.error('Error adding player:', error);
@@ -581,105 +572,45 @@ class AdminPanel {
         }
     }
     
-    /**
-     * Show token modal with player details
-     */
-    showTokenModal(player, token) {
-        const modal = document.getElementById('tokenModal');
-        const modalBody = document.getElementById('tokenModalBody');
-        
-        if (!modal || !modalBody) return;
-        
-        modalBody.innerHTML = `
-            <div class="token-display">
-                <div class="token-warning">
-                    ⚠️ <strong>Important:</strong> Copy this token now! It will only be shown once and cannot be retrieved later.
-                </div>
-                
-                <h4>Player Token Generated</h4>
-                
-                <div class="token-container">
-                    <input type="text" class="token-input" value="${token}" readonly id="generatedToken">
-                    <button class="copy-btn" onclick="adminPanel.copyToken()">Copy</button>
-                </div>
-                
-                <div class="player-details">
-                    <p><strong>Player:</strong> ${this.escapeHtml(player.name)}</p>
-                    <p><strong>Game:</strong> ${player.game}</p>
-                    <p><strong>Region:</strong> ${player.region}</p>
-                    <p><strong>Player ID:</strong> <code>${player.id}</code></p>
-                </div>
-                
-                <div style="margin-top: 1.5rem; text-align: center;">
-                    <button class="btn btn-primary" onclick="adminPanel.hideTokenModal()">Done</button>
-                </div>
-            </div>
-        `;
-        
-        modal.classList.add('show');
-    }
     
     /**
-     * Hide token modal
+     * Delete player from the system
      */
-    hideTokenModal() {
-        const modal = document.getElementById('tokenModal');
-        if (modal) {
-            modal.classList.remove('show');
+    async deletePlayer(playerId, playerName) {
+        // Confirm deletion
+        const confirmed = confirm(`Are you sure you want to delete player "${playerName}"?\n\nThis action cannot be undone and will remove all associated data.`);
+        if (!confirmed) {
+            return;
         }
-    }
-    
-    /**
-     * Copy token to clipboard
-     */
-    async copyToken() {
-        const tokenInput = document.getElementById('generatedToken');
-        if (!tokenInput) return;
         
         try {
-            await navigator.clipboard.writeText(tokenInput.value);
-            this.showSuccess('Token copied to clipboard!');
-        } catch (error) {
-            // Fallback for older browsers
-            tokenInput.select();
-            document.execCommand('copy');
-            this.showSuccess('Token copied to clipboard!');
-        }
-    }
-    
-    /**
-     * Generate token for existing player
-     */
-    async generateTokenForPlayer(playerId, playerName) {
-        try {
-            const response = await fetch(`${this.apiUrl}/v1/admin/players/${playerId}/token`, {
-                method: 'POST',
+            const response = await fetch(`${this.apiUrl}/v1/admin/players/${playerId}`, {
+                method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
                 }
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to generate token: ${response.status}`);
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || `HTTP ${response.status}`);
             }
 
-            const result = await response.json();
+            // Reload players list to reflect the deletion
+            if (this.selectedRunId) {
+                await this.loadPlayers(this.selectedRunId);
+            }
             
-            // Find the actual player data from the cached players array
-            const actualPlayer = this.players.find(p => p.id === playerId);
-            const player = {
-                id: playerId,
-                name: playerName,
-                game: actualPlayer ? actualPlayer.game : 'Unknown',
-                region: actualPlayer ? actualPlayer.region : 'Unknown'
-            };
+            // Reload global players list if we're on that section
+            if (this.currentSection === 'players') {
+                await this.loadGlobalPlayers();
+            }
             
-            // Show the token modal
-            this.showTokenModal(player, result.bearer_token);
+            this.showSuccess(`Player "${playerName}" has been deleted successfully.`);
             
         } catch (error) {
-            console.error('Error generating token:', error);
-            this.showError(`Failed to generate token: ${error.message}`);
+            console.error('Error deleting player:', error);
+            this.showError(`Failed to delete player: ${error.message}`);
         }
     }
     
@@ -889,8 +820,8 @@ class AdminPanel {
                 </div>
             </div>
             <div class="player-actions">
-                <button class="btn btn-small btn-primary" onclick="adminPanel.generateTokenForPlayer('${player.id}', '${this.escapeHtml(player.name)}')">
-                    🔑 New Token
+                <button class="btn btn-small btn-danger" onclick="adminPanel.deletePlayer('${player.id}', '${this.escapeHtml(player.name)}')">
+                    🗑️ Delete
                 </button>
                 <button class="btn btn-small btn-secondary" onclick="adminPanel.viewPlayerRun('${player.run_id}')">
                     📊 View Run

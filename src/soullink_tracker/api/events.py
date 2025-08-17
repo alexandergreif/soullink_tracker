@@ -160,64 +160,12 @@ async def process_event(
         if cached_response:
             return EventResponse(**cached_response)
 
-    # Begin processing with optional dual-write
+    # v3-only event processing
     applied_rules: list[str] = []
 
     try:
-        # Feature flags
-        config = get_config()
-        use_v3_eventstore: bool = bool(config.app.feature_v3_eventstore)
-        enable_dualwrite: bool = bool(getattr(config.app, "feature_v3_dualwrite", False))
-
-        # Holders for results
-        v2_event_id: UUID | None = None
-        v2_sequence_number: int | None = None
-        v3_event_id: UUID | None = None
-        v3_sequence_number: int | None = None
-
-        # Decide path(s) to execute
-        if use_v3_eventstore and not enable_dualwrite:
-            # v3-only path
-            v3_event_id, v3_sequence_number = await _process_event_v3(
-                db, event, applied_rules
-            )
-        else:
-            # Always run legacy V2 path
-            if event.type == "encounter":
-                v2_event_id = _process_encounter_event_legacy(db, event, applied_rules)
-                # Simulated sequence number for compatibility with v2
-                v2_sequence_number = 1
-            elif event.type == "catch_result":
-                v2_event_id = _process_catch_result_event_legacy(db, event, applied_rules)
-            elif event.type == "faint":
-                v2_event_id = _process_faint_event_legacy(db, event, applied_rules)
-            else:
-                raise ProblemDetailsException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    title="Invalid Event Type",
-                    detail=f"Unknown event type: {event.type}",
-                )
-
-            # Dual-write: attempt v3 in nested transaction
-            if enable_dualwrite:
-                try:
-                    with db.begin_nested():
-                        v3_event_id, v3_sequence_number = await _process_event_v3(
-                            db, event, applied_rules
-                        )
-                except Exception as dual_err:
-                    import logging
-
-                    logging.getLogger(__name__).warning(
-                        f"Dual-write (v3) failed for event type '{getattr(event, 'type', 'unknown')}' "
-                        f"in run {event.run_id} player {event.player_id}: {dual_err}"
-                    )
-
-        # Decide which result to expose to the client
-        event_id = v3_event_id if use_v3_eventstore else v2_event_id
-        sequence_number = (
-            v3_sequence_number if use_v3_eventstore else v2_sequence_number
-        )
+        # Process using v3 event store (only supported architecture)
+        event_id, sequence_number = await _process_event_v3(db, event, applied_rules)
 
         # Prepare response
         response_data: dict = {
@@ -286,8 +234,6 @@ def get_events_catchup(
     This endpoint allows WebSocket clients to retrieve events they may have missed
     while disconnected, using sequence numbers for efficient synchronization.
 
-    Only works when FEATURE_V3_EVENTSTORE is enabled.
-
     Query Parameters:
     - run_id: Run ID to get events for (required)
     - since_seq: Get events after this sequence number (optional, default=0)
@@ -295,15 +241,6 @@ def get_events_catchup(
 
     Returns events in chronological order with sequence numbers and timestamps.
     """
-    # Check if v3 event store is enabled
-    config = get_config()
-    if not config.app.feature_v3_eventstore:
-        raise ProblemDetailsException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            title="Feature Not Available",
-            detail="v3 Event Store is not enabled. This endpoint requires FEATURE_V3_EVENTSTORE=1",
-        )
-
     # Verify run exists and player belongs to it
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
@@ -371,132 +308,7 @@ def get_events_catchup(
             detail=f"Unexpected error retrieving events: {e}",
         )
 
-
-def _process_encounter_event_legacy(
-    db: Session, event: EventEncounter, applied_rules: list
-) -> UUID:
-    """Process an encounter event using legacy database approach."""
-    from ..db.models import Encounter
-
-    # Verify species and route exist
-    species = db.query(Species).filter(Species.id == event.species_id).first()
-    if not species:
-        raise ProblemDetailsException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Species Not Found",
-            detail=f"Species with ID {event.species_id} not found",
-        )
-
-    route = db.query(Route).filter(Route.id == event.route_id).first()
-    if not route:
-        raise ProblemDetailsException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Route Not Found",
-            detail=f"Route with ID {event.route_id} not found",
-        )
-
-    # For backwards compatibility, use simple status determination
-    encounter_status = EncounterStatus.FIRST_ENCOUNTER
-    dupes_skip = False
-
-    applied_rules.append("encounter_validated")
-    applied_rules.append("first_encounter_detected")
-
-    # Create encounter record
-    encounter = Encounter(
-        run_id=event.run_id,
-        player_id=event.player_id,
-        route_id=event.route_id,
-        species_id=event.species_id,
-        family_id=species.family_id,
-        level=event.level,
-        shiny=event.shiny,
-        method=event.method.value if hasattr(event.method, "value") else event.method,
-        rod_kind=event.rod_kind.value
-        if event.rod_kind and hasattr(event.rod_kind, "value")
-        else event.rod_kind,
-        time=event.time,
-        status=encounter_status.value
-        if hasattr(encounter_status, "value")
-        else encounter_status,
-        dupes_skip=dupes_skip,
-        fe_finalized=False,
-    )
-
-    db.add(encounter)
-    db.flush()
-
-    return encounter.id
-
-
-def _process_catch_result_event_legacy(
-    db: Session, event: EventCatchResult, applied_rules: list
-) -> UUID:
-    """Process a catch result event using legacy database approach."""
-    from ..db.models import Encounter
-
-    # Verify the encounter exists - this validates the encounter_id requirement
-    encounter = db.query(Encounter).filter(Encounter.id == event.encounter_id).first()
-    if not encounter:
-        raise ProblemDetailsException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            title="Encounter Not Found",
-            detail=f"Encounter with ID {event.encounter_id} not found",
-        )
-
-    # Verify encounter belongs to the same run and player
-    if encounter.run_id != event.run_id or encounter.player_id != event.player_id:
-        raise ProblemDetailsException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            title="Forbidden",
-            detail="Encounter does not belong to this player or run",
-        )
-
-    # Update encounter status
-    encounter.status = (
-        event.result.value if hasattr(event.result, "value") else event.result
-    )
-    applied_rules.append("catch_result_validated")
-    applied_rules.append("encounter_reference_verified")
-
-    return encounter.id
-
-
-def _process_faint_event_legacy(
-    db: Session, event: EventFaint, applied_rules: list
-) -> UUID:
-    """Process a faint event using legacy database approach."""
-    from ..db.models import PartyStatus
-
-    # Update party status
-    party_status = (
-        db.query(PartyStatus)
-        .filter(
-            PartyStatus.run_id == event.run_id,
-            PartyStatus.player_id == event.player_id,
-            PartyStatus.pokemon_key == event.pokemon_key,
-        )
-        .first()
-    )
-
-    if not party_status:
-        party_status = PartyStatus(
-            run_id=event.run_id,
-            player_id=event.player_id,
-            pokemon_key=event.pokemon_key,
-            alive=False,
-            last_update=event.time,
-        )
-        db.add(party_status)
-        db.flush()
-    else:
-        party_status.alive = False
-        party_status.last_update = event.time
-
-    applied_rules.append("faint_event_validated")
-
-    # Return a UUID-like identifier
-    return uuid4()  # Generate a UUID for consistency with response format
+# Legacy v2 processing functions removed in v3-only architecture
 
 
 async def _broadcast_event_update(

@@ -66,7 +66,7 @@ class RunCreate(BaseModel):
     """Schema for creating a new run."""
 
     name: constr(min_length=1, max_length=255) = Field(description="Name of the run")
-    password: constr(min_length=1) = Field(description="Password for run access")
+    password: Optional[constr(min_length=1)] = Field(None, description="Password for run access")
     rules_json: Dict = Field(
         default_factory=dict, description="Run rules configuration"
     )

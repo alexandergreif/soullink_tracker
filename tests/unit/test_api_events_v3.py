@@ -470,10 +470,10 @@ class TestProblemDetailsFormat:
 class TestEventCatchUp:
     """Test the catch-up endpoint for WebSocket synchronization."""
 
-    def test_get_events_catchup_v3_disabled(
+    def test_get_events_catchup_v3_always_enabled(
         self, client: TestClient, sample_run_data, sample_player_data
     ):
-        """Test catch-up endpoint when v3 event store is disabled."""
+        """Test catch-up endpoint works since v3 event store is always enabled."""
         # Create run and player 
         run_response = client.post("/v1/runs", json=sample_run_data)
         assert run_response.status_code == 201
@@ -486,17 +486,18 @@ class TestEventCatchUp:
         assert player_response.status_code == 201
         token = player_response.json()["player_token"]
         
-        # Test catch-up endpoint without v3 enabled
+        # Test catch-up endpoint works with v3 always enabled
         response = client.get(
             f"/v1/events?run_id={run_id}&since_seq=0&limit=100",
             headers={"Authorization": f"Bearer {token}"}
         )
         
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-        assert response.headers["content-type"] == "application/problem+json"
+        assert response.status_code == status.HTTP_200_OK
+        assert response.headers["content-type"] == "application/json"
         
-        problem = response.json()
-        assert problem["title"] == "Feature Not Available"
+        data = response.json()
+        assert "events" in data
+        assert "next_sequence" in data
         assert "v3 Event Store is not enabled" in problem["detail"]
 
     @pytest.mark.usefixtures("enable_v3_eventstore")
