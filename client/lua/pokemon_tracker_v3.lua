@@ -239,4 +239,25 @@ end
 -- Initialize
 log("Pokemon SoulLink Tracker V3 initialized")
 log("Output directory: " .. CONFIG.output_dir)
+create_output_dir()
 log("Monitoring for V3-compatible events...")
+
+-- Register the frame callback to keep the script running
+gui.register(on_frame)
+
+-- Keep script alive with periodic status updates
+local startup_time = os.time()
+local last_status_update = 0
+
+while true do
+    -- Yield to prevent 100% CPU usage
+    emu.frameadvance()
+    
+    -- Status update every 10 seconds (600 frames at 60fps)
+    local current_time = os.time()
+    if current_time - last_status_update >= 10 then
+        last_status_update = current_time
+        local uptime = current_time - startup_time
+        log("Script running for " .. uptime .. " seconds, monitoring game...")
+    end
+end
