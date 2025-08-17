@@ -220,22 +220,11 @@ class ProjectionEngine:
         # Build current run state for rules evaluation
         state = self._build_run_state(event.run_id)
 
-        # Create encounter lookup helper
+        # Create encounter lookup helper using direct event lookup
         def encounter_lookup(encounter_id: UUID) -> tuple[UUID, int, int]:
             """Resolve encounter_id to (player_id, route_id, family_id)."""
-            # In v3, we need to look this up from the event store
-            from .event_store import EventStore
-
-            event_store = EventStore(self.db)
-
-            # Get the encounter event from event store
-            envelopes = event_store.get_events_by_type(event.run_id, "encounter")
-            for envelope in envelopes:
-                if envelope.event.event_id == encounter_id:
-                    enc_event = envelope.event
-                    return enc_event.player_id, enc_event.route_id, enc_event.family_id
-
-            raise ValueError(f"Encounter {encounter_id} not found in event store")
+            player_id, route_id, family_id = self._resolve_encounter(event.run_id, encounter_id)
+            return player_id, route_id, family_id
 
         # Apply rules
         decision = apply_catch_result(state, event, encounter_lookup)
@@ -368,6 +357,35 @@ class ProjectionEngine:
             )
 
         return RunState(blocked_families=blocked_families, player_routes=player_routes)
+
+    def _resolve_encounter(self, run_id: UUID, encounter_id: UUID) -> tuple[UUID, int, int]:
+        """Resolve encounter_id to (player_id, route_id, family_id) using direct lookup.
+        
+        Args:
+            run_id: Run ID to search within
+            encounter_id: Event ID of the encounter to resolve
+            
+        Returns:
+            Tuple of (player_id, route_id, family_id)
+            
+        Raises:
+            ProjectionError: If encounter not found or wrong event type
+        """
+        from .event_store import EventStore
+        
+        event_store = EventStore(self.db)
+        envelope = event_store.get_event_by_id(run_id, encounter_id)
+        
+        if not envelope:
+            raise ProjectionError(f"Encounter {encounter_id} not found for run {run_id}")
+            
+        if envelope.event.event_type != "encounter":
+            raise ProjectionError(
+                f"Event {encounter_id} is not an encounter event (type: {envelope.event.event_type})"
+            )
+            
+        enc_event = envelope.event
+        return enc_event.player_id, enc_event.route_id, enc_event.family_id
 
     def _upsert_route_progress(
         self,

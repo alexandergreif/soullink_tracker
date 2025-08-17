@@ -144,6 +144,41 @@ class EventStore:
         """
         return self.get_events(run_id=run_id, event_types=[event_type], limit=limit)
 
+    def get_event_by_id(self, run_id: UUID, event_id: UUID) -> Optional[EventEnvelope]:
+        """
+        Get a single event by its ID within a specific run.
+
+        Args:
+            run_id: Run ID to filter by
+            event_id: Specific event ID to retrieve
+
+        Returns:
+            EventEnvelope for the specified event, or None if not found
+
+        Raises:
+            EventStoreError: If the query fails
+        """
+        try:
+            record = self.db.execute(
+                select(EventModel).where(
+                    and_(EventModel.run_id == run_id, EventModel.id == event_id)
+                )
+            ).scalar_one_or_none()
+
+            if not record:
+                return None
+
+            # Deserialize and wrap in envelope
+            event = self._deserialize_event(record)
+            return EventEnvelope(
+                sequence_number=record.seq,
+                stored_at=record.created_at,
+                event=event
+            )
+
+        except SQLAlchemyError as e:
+            raise EventStoreError(f"Failed to get event by ID: {e}") from e
+
     def get_latest_sequence(self, run_id: UUID) -> int:
         """
         Get the latest sequence number for a run.

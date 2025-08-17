@@ -543,3 +543,55 @@ def get_event_store_status(
             title="Event Store Error",
             detail=f"Failed to access event store: {e}",
         )
+
+
+@router.delete(
+    "/players/{player_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Player deleted successfully"},
+        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        404: {"model": ProblemDetails, "description": "Player not found"},
+    },
+)
+def delete_player(
+    player_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost)
+):
+    """
+    Delete a player from the system.
+    
+    This is an admin-only endpoint that removes a player and all associated data
+    including their sessions, encounters, and other related records.
+    
+    **WARNING: This action cannot be undone!**
+    """
+    # Verify the player exists
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        raise ProblemDetailsException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Player Not Found",
+            detail=f"Player with ID {player_id} does not exist",
+        )
+    
+    try:
+        # Delete the player (CASCADE should handle related records)
+        db.delete(player)
+        db.commit()
+        
+        logger.info(f"Player {player.name} (ID: {player_id}) deleted by admin")
+        
+        # Return 204 No Content
+        return None
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete player: {str(e)}")
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail="Unable to delete player. Please check server logs for details.",
+        )

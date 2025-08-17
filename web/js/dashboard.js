@@ -1488,14 +1488,18 @@ class SoulLinkDashboard {
         const reasonText = family.origin === 'caught' ? 'Caught' : 'Encountered';
         const timeAgo = this.getTimeAgo(family.created_at);
         
+        // Use species_names from API response and derive family name from first species
+        const speciesNames = family.species_names || [];
+        const familyName = speciesNames.length > 0 ? `${speciesNames[0]} Family` : 'Unknown Family';
+        
         return `
             <div class="blocklist-family ${reasonClass}">
                 <div class="blocklist-header">
-                    <div class="family-name">${family.family_name || 'Unknown Family'}</div>
+                    <div class="family-name">${familyName}</div>
                     <div class="block-reason ${reasonClass}">${reasonText}</div>
                 </div>
                 <div class="species-list">
-                    ${(family.species || []).map(species => 
+                    ${speciesNames.map(species =>
                         `<span class="species-badge">${species}</span>`
                     ).join('')}
                 </div>

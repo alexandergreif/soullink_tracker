@@ -52,11 +52,8 @@ class AppConfig:
     enable_system_tray: bool = True
     enable_cors: bool = True
 
-    # v3 Feature Flags
-    feature_v3_eventstore: bool = False  # Enable v3 event sourcing architecture
-    feature_v3_dualwrite: bool = (
-        False  # Enable dual-write (V2 + V3) for compatibility testing
-    )
+    # Event Store Configuration (v3-only)
+    feature_v3_eventstore: bool = True  # v3 event sourcing is the only supported architecture
 
     # Security Configuration
     session_ttl_days: int = 30  # Session token TTL in days
@@ -125,13 +122,8 @@ class ConfigManager:
         # Debug mode
         env_info["debug"] = bool(os.getenv("SOULLINK_DEBUG", "0") == "1")
 
-        # Feature flags
-        env_info["feature_v3_eventstore"] = bool(
-            os.getenv("FEATURE_V3_EVENTSTORE", "0") == "1"
-        )
-        env_info["feature_v3_dualwrite"] = bool(
-            os.getenv("FEATURE_V3_DUALWRITE", "0") == "1"
-        )
+        # v3 Event Store (always enabled, ignores env vars)
+        env_info["feature_v3_eventstore"] = True  # v3 is the only supported architecture
 
         return env_info
 
@@ -168,7 +160,6 @@ class ConfigManager:
                 is_development=env_info["is_development"],
                 log_level="DEBUG" if env_info["debug"] else "INFO",
                 feature_v3_eventstore=env_info["feature_v3_eventstore"],
-                feature_v3_dualwrite=env_info["feature_v3_dualwrite"],
             ),
             server=ServerConfig(
                 debug=env_info["debug"], auto_reload=env_info["is_development"]
@@ -203,7 +194,6 @@ class ConfigManager:
                         "is_portable": env_info["is_portable"],
                         "is_development": env_info["is_development"],
                         "feature_v3_eventstore": env_info["feature_v3_eventstore"],
-                        "feature_v3_dualwrite": env_info["feature_v3_dualwrite"],
                     }
                 )
 

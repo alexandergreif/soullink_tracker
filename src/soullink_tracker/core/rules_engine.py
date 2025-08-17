@@ -1,7 +1,7 @@
 """SoulLink rules engine for determining encounter status and game logic.
 
-Legacy compatibility layer that wraps pure functions from domain.rules.
-This maintains backward compatibility while delegating to the new pure function architecture.
+V3-only rules engine that wraps pure functions from domain.rules.
+Always uses the v3 event store for state building in the clean architecture.
 """
 
 from typing import List, Optional, Dict
@@ -10,10 +10,10 @@ from datetime import datetime
 import logging
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+# select import removed - not needed in v3-only event store architecture
 
 from .enums import EncounterStatus, EncounterMethod
-from ..db.models import Encounter, Blocklist, LinkMember, RouteProgress
+# Legacy model imports removed in v3-only architecture
 from ..config import get_config
 from ..domain.events import EncounterEvent, CatchResultEvent
 from ..domain.rules import RunState, PlayerRouteState, evaluate_encounter
@@ -23,8 +23,8 @@ from ..store.event_store import EventStore
 class RulesEngine:
     """Engine for SoulLink rules and game logic.
 
-    Legacy compatibility layer that wraps pure functions from domain.rules.
-    Automatically chooses between v3 event store or legacy database for state building.
+    V3-only rules engine that wraps pure functions from domain.rules.
+    Always uses the v3 event store for state building.
     """
 
     def __init__(self, db_session: Session):
@@ -38,13 +38,8 @@ class RulesEngine:
             return self._state_cache[run_id]
 
         config = get_config()
-        if (
-            hasattr(config.app, "feature_v3_eventstore")
-            and config.app.feature_v3_eventstore
-        ):
-            state = self._build_state_from_eventstore(run_id)
-        else:
-            state = self._build_state_from_legacy_db(run_id)
+        # v3-only architecture: always use event store
+        state = self._build_state_from_eventstore(run_id)
 
         self._state_cache[run_id] = state
         return state
@@ -93,39 +88,13 @@ class RulesEngine:
             )
 
         except Exception as e:
-            self.logger.warning(
+            # In v3-only architecture, event store failure is an error
+            self.logger.error(
                 f"Failed to build state from event store for run {run_id}: {e}"
             )
-            # Fall back to legacy DB
-            return self._build_state_from_legacy_db(run_id)
+            raise
 
-    def _build_state_from_legacy_db(self, run_id: UUID) -> RunState:
-        """Build state from legacy database tables."""
-        blocked_families = set()
-        player_routes = {}
-
-        # Get blocked families from blocklist
-        blocklist_query = select(Blocklist).where(Blocklist.run_id == run_id)
-        blocklist_results = self.db.execute(blocklist_query).scalars().all()
-        blocked_families = {entry.family_id for entry in blocklist_results}
-
-        # Get route progress
-        route_progress_query = select(RouteProgress).where(
-            RouteProgress.run_id == run_id
-        )
-        route_progress_results = self.db.execute(route_progress_query).scalars().all()
-
-        for progress in route_progress_results:
-            route_key = (progress.player_id, progress.route_id)
-            player_routes[route_key] = PlayerRouteState(
-                fe_finalized=progress.fe_finalized,
-                # These fields aren't tracked in route_progress currently
-                first_encounter_family_id=None,
-                last_encounter_method=None,
-                last_rod_kind=None,
-            )
-
-        return RunState(blocked_families=blocked_families, player_routes=player_routes)
+    # Legacy DB state building removed in v3-only architecture
 
     def _find_encounter_event(
         self, envelopes, encounter_id: UUID
