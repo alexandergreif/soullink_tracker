@@ -16,14 +16,50 @@ import time
 
 def setup_environment():
     """Setup the Python path and environment."""
-    # Add src to Python path
-    src_path = Path(__file__).parent / "src"
-    if str(src_path) not in sys.path:
-        sys.path.insert(0, str(src_path))
+    # Add src to Python path - critical for module imports
+    project_root = Path(__file__).parent.absolute()
+    src_path = project_root / "src"
+    
+    # Ensure src path exists
+    if not src_path.exists():
+        print(f"❌ Error: src directory not found at {src_path}")
+        print("Make sure you're running this script from the project root directory")
+        sys.exit(1)
+    
+    # Add to Python path if not already there
+    src_str = str(src_path)
+    if src_str not in sys.path:
+        sys.path.insert(0, src_str)
+        print(f"✅ Added {src_str} to Python path")
+    
+    # Also set PYTHONPATH environment variable for subprocesses
+    current_pythonpath = os.environ.get("PYTHONPATH", "")
+    if src_str not in current_pythonpath:
+        if current_pythonpath:
+            os.environ["PYTHONPATH"] = f"{src_str}{os.pathsep}{current_pythonpath}"
+        else:
+            os.environ["PYTHONPATH"] = src_str
+        print(f"✅ Set PYTHONPATH environment variable")
     
     # Set environment variables for development
     os.environ["SOULLINK_DEBUG"] = "true"
     os.environ["SOULLINK_DEV_MODE"] = "true"
+    
+    print(f"📁 Project root: {project_root}")
+    print(f"📁 Source path: {src_path}")
+    print(f"🐍 Python executable: {sys.executable}")
+    print(f"🔗 Python path includes: {[p for p in sys.path if 'soullink' in p or 'src' in p]}")
+    
+    # Verify module can be imported
+    try:
+        import soullink_tracker
+        print("✅ soullink_tracker module can be imported successfully")
+    except ImportError as e:
+        print(f"❌ Failed to import soullink_tracker: {e}")
+        print("🔍 Current Python path:")
+        for i, path in enumerate(sys.path):
+            print(f"  {i}: {path}")
+        sys.exit(1)
 
 
 def run_migrations():
@@ -114,14 +150,15 @@ def start_server():
         # Auto-open admin panel in browser
         webbrowser.open("http://127.0.0.1:8000/admin")
         
-        # Start the server
+        # Start the server with explicit environment
+        env = os.environ.copy()
         subprocess.run([
             sys.executable, "-m", "uvicorn",
             "soullink_tracker.main:app",
             "--host", "127.0.0.1",
             "--port", "8000",
             "--reload"  # Auto-restart on code changes
-        ], check=True)
+        ], check=True, env=env)
         
     except KeyboardInterrupt:
         print("\n👋 Server stopped by user")
@@ -129,6 +166,43 @@ def start_server():
         print(f"❌ Server failed to start: {e}")
         return False
     
+    return True
+
+
+def check_dependencies():
+    """Check if required dependencies are installed."""
+    required_packages = [
+        'fastapi', 'uvicorn', 'sqlalchemy', 'alembic', 
+        'pydantic', 'python-jose', 'passlib', 'python-multipart'
+    ]
+    
+    missing_packages = []
+    for package in required_packages:
+        try:
+            __import__(package)
+        except ImportError:
+            try:
+                # Some packages have different import names
+                import_map = {
+                    'python-jose': 'jose',
+                    'python-multipart': 'multipart'
+                }
+                actual_name = import_map.get(package, package)
+                __import__(actual_name)
+            except ImportError:
+                missing_packages.append(package)
+    
+    if missing_packages:
+        print("❌ Missing required packages:")
+        for package in missing_packages:
+            print(f"   - {package}")
+        print("\nTo install missing packages, run:")
+        print(f"   pip install {' '.join(missing_packages)}")
+        print("\nOr install all requirements:")
+        print("   pip install -r requirements.txt")
+        return False
+    
+    print("✅ All required dependencies are installed")
     return True
 
 
@@ -140,9 +214,16 @@ def main():
     # Setup environment
     setup_environment()
     
+    # Check dependencies
+    if not check_dependencies():
+        print("❌ Cannot start server without required dependencies")
+        input("Press Enter to exit...")
+        sys.exit(1)
+    
     # Run migrations
     if not run_migrations():
         print("❌ Cannot start server without database migrations")
+        input("Press Enter to exit...")
         sys.exit(1)
     
     # Load reference data
@@ -151,6 +232,7 @@ def main():
     
     # Start server
     if not start_server():
+        input("Press Enter to exit...")
         sys.exit(1)
 
 
