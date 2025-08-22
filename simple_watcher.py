@@ -48,8 +48,8 @@ class SimpleWatcher:
             # Get available runs
             response = requests.get(f"{CONFIG['api_base_url']}/v1/admin/runs", timeout=CONFIG['timeout'])
             if response.status_code == 200:
-                runs = response.json().get('runs', [])
-                if runs:
+                runs = response.json()  # API returns list directly, not object with 'runs' key
+                if runs and isinstance(runs, list):
                     # Use the first available run
                     run_data = runs[0]
                     self.run_id = run_data['id']
@@ -57,29 +57,32 @@ class SimpleWatcher:
                     
                     # Get players for this run
                     players_response = requests.get(
-                        f"{CONFIG['api_base_url']}/v1/admin/runs/{self.run_id}/players",
+                        f"{CONFIG['api_base_url']}/v1/runs/{self.run_id}/players",
                         timeout=CONFIG['timeout']
                     )
                     if players_response.status_code == 200:
-                        players = players_response.json().get('players', [])
-                        if players:
-                            # Use the first available player
-                            player_data = players[0]
-                            self.player_id = player_data['id']
-                            self.player_token = player_data.get('access_token', '')
-                            logger.info(f"Using player: {player_data['name']} ({self.player_id})")
-                            return True
+                        players = players_response.json()  # API returns list directly
+                        if players and isinstance(players, list):
+                            # Regular PlayerResponse doesn't include tokens for security
+                            # We'll need to create a new player to get a token
+                            logger.info(f"Found existing players, but no tokens available in PlayerResponse")
+                            logger.info(f"Existing players: {[p['name'] for p in players]}")
+                            return False  # Fall back to creating new player
                         else:
                             logger.error("No players found in run")
                     else:
                         logger.error(f"Failed to get players: {players_response.status_code}")
+                        logger.error(f"Players response: {players_response.text}")
                 else:
                     logger.error("No runs found")
             else:
                 logger.error(f"Failed to get runs: {response.status_code}")
+                logger.error(f"Response: {response.text}")
                 
         except Exception as e:
             logger.error(f"Failed to get admin info: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
         return False
     
@@ -107,7 +110,7 @@ class SimpleWatcher:
             
             if response.status_code == 201:
                 run_result = response.json()
-                self.run_id = run_result['run_id']
+                self.run_id = run_result['id']  # RunResponse uses 'id', not 'run_id'
                 logger.info(f"Created run: {self.run_id}")
                 
                 # Create a test player
@@ -125,8 +128,8 @@ class SimpleWatcher:
                 
                 if player_response.status_code == 201:
                     player_result = player_response.json()
-                    self.player_id = player_result['player_id']
-                    self.player_token = player_result['access_token']
+                    self.player_id = player_result['id']  # PlayerWithTokenResponse uses 'id', not 'player_id'
+                    self.player_token = player_result['new_token']  # PlayerWithTokenResponse uses 'new_token'
                     logger.info(f"Created player: {self.player_id}")
                     logger.info(f"Player token: {self.player_token[:20]}...")
                     return True
