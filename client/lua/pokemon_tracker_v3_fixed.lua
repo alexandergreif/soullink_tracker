@@ -10,6 +10,18 @@ FIXES:
 - Improved memory address compatibility
 ]]
 
+-- Utility function declarations (needed before load_config)
+local function log_error(message)
+    local timestamp = os.date("%H:%M:%S")
+    print("[" .. timestamp .. "] [SoulLink ERROR] " .. message)
+end
+
+local function log(message)
+    -- Will be fully defined later, basic version for config loading
+    local timestamp = os.date("%H:%M:%S")
+    print("[" .. timestamp .. "] [SoulLink V3] " .. message)
+end
+
 -- Load configuration from external file
 local function load_config()
     local config_file = "client/lua/config.lua"
@@ -27,7 +39,7 @@ local function load_config()
             api_base_url = "http://127.0.0.1:8000",
             run_id = "MISSING_RUN_ID",
             player_id = "MISSING_PLAYER_ID",
-            output_dir = "C:/temp/soullink_events/",
+            output_dir = "C:/Users/Alex/AppData/Local/Temp/soullink_events/",
             poll_interval = 60,
             debug = true,
             max_runtime = 3600,
@@ -99,7 +111,7 @@ local game_state = {
     last_status_update = 0
 }
 
--- Utility functions
+-- Utility functions (redefine with full functionality)
 local function log(message)
     if CONFIG.debug then
         local timestamp = os.date("%H:%M:%S")
@@ -107,9 +119,12 @@ local function log(message)
     end
 end
 
-local function log_error(message)
-    local timestamp = os.date("%H:%M:%S")
-    print("[" .. timestamp .. "] [SoulLink ERROR] " .. message)
+-- log_error already defined above, but ensure it's available
+if not log_error then
+    log_error = function(message)
+        local timestamp = os.date("%H:%M:%S")
+        print("[" .. timestamp .. "] [SoulLink ERROR] " .. message)
+    end
 end
 
 -- Safe memory reading with error handling
