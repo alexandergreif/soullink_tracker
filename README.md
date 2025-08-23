@@ -311,3 +311,81 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 **May your encounters be kind and your soul links be strong! 🔗✨**
 
 *Built with ❤️ for the Pokemon challenge community*
+
+
+⏺ Perfect! Here's your quick start guide:
+
+  🚀 Easy 3-Step Start
+
+  Option 1: Windows (Super Easy)
+
+  Just double-click these files in order:
+  1. start_server.bat → Wait for "Server will be available at..."
+  2. start_watcher.bat → Wait for "Starting monitoring loop..."
+  3. Load Lua script in DeSmuME → client/lua/pokemon_tracker_v3_fixed.lua
+
+  Option 2: Manual (Any OS)
+
+  # Step 1: Start server
+  python start_server.py
+
+  # Step 2: Start watcher (in new terminal)
+  python simple_watcher.py
+
+  # Step 3: Load Lua script in DeSmuME
+
+  ✅ Prerequisites Check
+
+  The scripts do auto-check most things for you! But you need:
+
+  1. Python 3.8+ (check: python --version)
+  2. DeSmuME with Lua support
+  3. Pokemon HeartGold/SoulSilver ROM
+
+  🔍 What the Scripts Auto-Handle:
+
+  - ✅ Dependencies: Auto-installs Python packages (requirements.txt)
+  - ✅ Database setup: Runs migrations automatically
+  - ✅ Reference data: Loads Pokemon/route data
+  - ✅ Configuration: Creates config files if missing
+  - ✅ Directory creation: Makes event directories
+  - ✅ Server health checks: Verifies everything is working
+
+  📊 URLs After Startup:
+
+  - Dashboard: http://127.0.0.1:8000/dashboard
+  - Admin Panel: http://127.0.0.1:8000/admin
+  - API Docs: http://127.0.0.1:8000/docs
+
+  ⚡ Expected Output:
+
+  Server startup:
+  🎮 SoulLink Tracker - Server Startup
+  ✅ All required dependencies are installed
+  🔧 Running database migrations...
+  ✅ Database migrations completed successfully
+  🚀 Starting SoulLink Tracker server...
+
+  Watcher startup:
+  === Simple SoulLink Event Watcher ===
+  ✅ Server is running and accessible
+  Starting monitoring loop...
+
+  🎯 First Time Setup:
+
+  1. Start server & watcher (steps above)
+  2. Go to Admin Panel: http://127.0.0.1:8000/admin
+  3. Create a new run with your rules
+  4. Add yourself as a player
+  5. Copy your player token for later
+  6. Load Lua script in DeSmuME with your ROM
+  7. Open Dashboard to see events live!
+
+  🆘 If Something Breaks:
+
+  The setup guide has comprehensive troubleshooting, but most common issues:
+  - "ModuleNotFoundError" → Run from project root directory
+  - "Cannot connect to server" → Start server first
+  - "Lua script stops immediately" → Use pokemon_tracker_v3_fixed.lua
+
+  Just run the start scripts - they handle almost everything automatically! 🎮
