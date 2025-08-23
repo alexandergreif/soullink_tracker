@@ -17,6 +17,13 @@ from .api.middleware import (
 )
 from .config import get_web_directory, get_config, get_rate_limit_config
 from .api import runs, players, events, data, websockets, admin, auth
+from .utils.logging_config import initialize_logging, get_logger
+
+# Initialize logging system
+config = get_config()
+initialize_logging(log_dir=config.app.log_dir, debug=config.server.debug)
+logger = get_logger('main')
+logger.info("Starting SoulLink Tracker v%s", __version__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,8 +34,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Get configuration once for all middleware setup
-config = get_config()
+logger.info("FastAPI app created")
 
 # Add custom middleware in correct order (innermost first)
 app.add_middleware(ProblemDetailsMiddleware)

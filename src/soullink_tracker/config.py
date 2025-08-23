@@ -163,6 +163,7 @@ class AppConfig:
     # Logging
     log_level: str = "INFO"
     log_to_file: bool = True
+    log_dir: str = "logs"  # Directory for log files
 
     # Environment
     is_portable: bool = False

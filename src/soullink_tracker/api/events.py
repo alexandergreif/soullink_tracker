@@ -14,6 +14,7 @@ from ..db.database import get_db
 from ..db.models import Run, Player, Species, IdempotencyKey, Encounter
 from ..core.enums import EncounterStatus
 from ..auth.dependencies import get_current_player
+from ..utils.logging_config import get_logger, log_exception
 
 # v3 event store imports (used when feature flag is enabled)
 from ..domain.events import EncounterEvent, CatchResultEvent, FaintEvent
@@ -33,6 +34,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/v1/events", tags=["events"])
+logger = get_logger('events')
 
 
 def _check_idempotency(
@@ -41,6 +43,8 @@ def _check_idempotency(
     """Check if request was already processed using idempotency key."""
     if not idempotency_key:
         return None
+    
+    logger.debug(f"Checking idempotency key: {idempotency_key} for player {player_id}")
 
     request_hash = hashlib.sha256(
         json.dumps(request_data, sort_keys=True).encode()
@@ -125,6 +129,8 @@ async def process_event(
     For encounter events, returns event_id and sequence number.
     For catch_result events, requires valid encounter_id reference.
     """
+    logger.info(f"Processing {event.type} event for player {event.player_id} in run {event.run_id}")
+    
     # Verify player authorization
     if str(current_player.id) != str(event.player_id):
         raise ProblemDetailsException(
@@ -254,6 +260,7 @@ def get_events_catchup(
             detail=f"Failed to retrieve events: {e}",
         )
     except Exception as e:
+        log_exception('events', e, {'run_id': str(run_id), 'since_seq': since_seq})
         raise ProblemDetailsException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             title="Internal Server Error",
@@ -274,6 +281,7 @@ async def _broadcast_event_update(
         event: Domain event (not API schema event)
         sequence_number: Event sequence number for ordering
     """
+    logger.debug(f"Broadcasting {event.event_type} event with sequence {sequence_number}")
     try:
         # Import WebSocket message schemas locally to avoid circular imports
         from ..events.schemas import (

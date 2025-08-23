@@ -1,7 +1,6 @@
 """Database configuration and setup."""
 
 import os
-import logging
 import time
 from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
@@ -9,8 +8,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
 from typing import Optional
 
+from ..utils.logging_config import get_logger
+
 # Query performance logger
-query_logger = logging.getLogger("sqlalchemy.query_performance")
+query_logger = get_logger('database')
+logger = get_logger('database')
 
 
 def _is_sqlite_url(url: str) -> bool:
