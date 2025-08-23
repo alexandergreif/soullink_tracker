@@ -20,14 +20,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add unique constraint to idempotency_keys to prevent race conditions."""
-    # Add unique constraint to ensure atomic idempotency checking
-    op.create_unique_constraint(
-        'uq_idempotency_full',
-        'idempotency_keys',
-        ['key', 'run_id', 'player_id', 'request_hash']
-    )
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table('idempotency_keys') as batch_op:
+        batch_op.create_unique_constraint(
+            'uq_idempotency_full',
+            ['key', 'run_id', 'player_id', 'request_hash']
+        )
 
 
 def downgrade() -> None:
     """Remove the unique constraint."""
-    op.drop_constraint('uq_idempotency_full', 'idempotency_keys', type_='unique')
+    # Use batch mode for SQLite compatibility
+    with op.batch_alter_table('idempotency_keys') as batch_op:
+        batch_op.drop_constraint('uq_idempotency_full', type_='unique')
