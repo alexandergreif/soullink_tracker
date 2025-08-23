@@ -190,3 +190,21 @@ def validate_bearer_token_format(token: str) -> None:
             detail="Invalid token format",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def create_access_token(player_id: str) -> str:
+    """
+    Create an access token for testing purposes.
+    
+    This is a simplified token generation function primarily for tests.
+    In production, use the proper Player.generate_token() method.
+    
+    Args:
+        player_id: The player ID to create a token for
+        
+    Returns:
+        str: A simple token string for testing
+    """
+    # Generate a secure token using the same method as the main system
+    token, _ = generate_secure_token()
+    return token

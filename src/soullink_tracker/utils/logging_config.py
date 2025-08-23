@@ -163,6 +163,7 @@ class ComponentLogger:
         
         Args:
             component: Component name (api, database, events, auth, etc.)
+                      Can also be a module path like 'soullink_tracker.api.websockets'
             
         Returns:
             Logger instance for the component
@@ -170,18 +171,98 @@ class ComponentLogger:
         if not cls._initialized:
             cls.initialize()
             
+        # Handle module paths - extract component from __name__ format
+        if 'soullink_tracker.' in component:
+            # Extract component from module path
+            parts = component.split('.')
+            if len(parts) >= 3:
+                # soullink_tracker.api.websockets -> websocket
+                if parts[2] == 'websockets':
+                    component = 'websocket'
+                elif parts[1] == 'auth':
+                    component = 'auth'
+                elif parts[1] == 'api':
+                    component = 'api'
+                elif parts[1] == 'db' or 'store' in parts:
+                    component = 'database'
+                elif parts[1] == 'events':
+                    component = 'events'
+                else:
+                    component = parts[1] if len(parts) > 1 else 'main'
+            
         # Map component to logger
         if component in cls._loggers:
             logger = cls._loggers[component]
         else:
-            # Default to main logger for unknown components
-            logger = cls._loggers.get('main', logging.getLogger(f'soullink.{component}'))
+            # Create a new component logger on-demand
+            cls._create_component_logger(component)
+            logger = cls._loggers.get(component, cls._loggers.get('main'))
             
-        # Also log to unified logger
+        # Add unified handler to component logger instead of using DualLogger
         if 'unified' in cls._loggers and component != 'unified':
-            return _DualLogger(logger, cls._loggers['unified'])
+            unified_logger = cls._loggers['unified']
+            # Add unified handler to component logger if not already present
+            unified_handler = None
+            for handler in unified_logger.handlers:
+                if hasattr(handler, 'baseFilename') and 'unified.log' in handler.baseFilename:
+                    unified_handler = handler
+                    break
+            
+            if unified_handler and unified_handler not in logger.handlers:
+                logger.addHandler(unified_handler)
             
         return logger
+    
+    @classmethod
+    def _create_component_logger(cls, component: str) -> None:
+        """Create a component logger on-demand."""
+        if not cls._initialized or component in cls._loggers:
+            return
+            
+        logger_name = f"soullink.{component}"
+        logger = logging.getLogger(logger_name)
+        
+        # Clear existing handlers
+        logger.handlers.clear()
+        logger.propagate = False
+        
+        # Set level (DEBUG if debug mode, otherwise INFO)
+        config = get_config()
+        level = logging.DEBUG if config.server.debug else logging.INFO
+        logger.setLevel(level)
+        
+        # File handler with rotation
+        log_file = cls._log_dir / f'{component}.log'
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,  # 10MB
+            backupCount=5,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(level)
+        
+        detailed_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(funcName)s() - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        file_handler.setFormatter(detailed_formatter)
+        logger.addHandler(file_handler)
+        
+        # Add unified handler if available
+        if 'unified' in cls._loggers:
+            unified_logger = cls._loggers['unified']
+            # Find the unified handler
+            unified_handler = None
+            for handler in unified_logger.handlers:
+                if hasattr(handler, 'baseFilename') and 'unified.log' in handler.baseFilename:
+                    unified_handler = handler
+                    break
+            
+            if unified_handler and unified_handler not in logger.handlers:
+                logger.addHandler(unified_handler)
+        
+        # Store logger reference
+        cls._loggers[component] = logger
     
     @classmethod
     def log_exception(cls, component: str, exc: Exception, context: Optional[Dict[str, Any]] = None) -> None:
@@ -193,15 +274,27 @@ class ComponentLogger:
             exc: The exception to log
             context: Additional context information
         """
-        component_logger = cls.get_logger(component)
-        error_logger = cls.get_logger('error')
+        # Get the actual logger instances directly from _loggers to avoid handler duplication
+        component_logger = cls._loggers.get(component)
+        if not component_logger and component not in cls._loggers:
+            cls._create_component_logger(component)
+            component_logger = cls._loggers.get(component)
+        
+        error_logger = cls._loggers.get('error')
+        
+        if not component_logger or not error_logger:
+            # Fallback to main logger if component/error loggers not found
+            fallback_logger = cls._loggers.get('main')
+            if fallback_logger:
+                fallback_logger.error(f"Failed to get proper loggers for component: {component}")
+            return
         
         # Build context string
         context_str = ""
         if context:
             context_str = " | Context: " + ", ".join(f"{k}={v}" for k, v in context.items())
         
-        # Log to component logger
+        # Log to component logger (this will also go to unified due to shared handler)
         component_logger.error(f"Exception in {component}: {type(exc).__name__}: {exc}{context_str}", exc_info=True)
         
         # Log to centralized error logger
@@ -221,50 +314,24 @@ class ComponentLogger:
                     handler.doRollover()
 
 
-class _DualLogger:
-    """Logger that writes to two loggers simultaneously."""
-    
-    def __init__(self, primary: logging.Logger, secondary: logging.Logger):
-        self.primary = primary
-        self.secondary = secondary
-        self.name = primary.name  # For string representation
-    
-    def _log(self, level: int, msg: str, *args, **kwargs):
-        self.primary.log(level, msg, *args, **kwargs)
-        self.secondary.log(level, msg, *args, **kwargs)
-    
-    def debug(self, msg: str, *args, **kwargs):
-        self._log(logging.DEBUG, msg, *args, **kwargs)
-    
-    def info(self, msg: str, *args, **kwargs):
-        self._log(logging.INFO, msg, *args, **kwargs)
-    
-    def warning(self, msg: str, *args, **kwargs):
-        self._log(logging.WARNING, msg, *args, **kwargs)
-    
-    def error(self, msg: str, *args, **kwargs):
-        self._log(logging.ERROR, msg, *args, **kwargs)
-    
-    def critical(self, msg: str, *args, **kwargs):
-        self._log(logging.CRITICAL, msg, *args, **kwargs)
-    
-    def exception(self, msg: str, *args, **kwargs):
-        self.primary.exception(msg, *args, **kwargs)
-        self.secondary.exception(msg, *args, **kwargs)
-    
-    def isEnabledFor(self, level: int) -> bool:
-        """Check if logger is enabled for given level."""
-        return self.primary.isEnabledFor(level)
-    
-    def __str__(self) -> str:
-        """String representation of the logger."""
-        return f"DualLogger({self.primary.name})"
+# _DualLogger class removed - now using shared handlers approach for unified logging
 
 
 # Convenience functions
 def get_logger(component: str) -> logging.Logger:
     """Get a logger for a specific component."""
     return ComponentLogger.get_logger(component)
+
+
+def get_module_logger(module_name: str) -> logging.Logger:
+    """
+    Get a logger for a module using its __name__.
+    This automatically maps module paths to appropriate components.
+    
+    Example:
+        logger = get_module_logger(__name__)  # Works from any module
+    """
+    return ComponentLogger.get_logger(module_name)
 
 
 def initialize_logging(log_dir: Optional[str] = None, debug: bool = False) -> None:

@@ -389,3 +389,4 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
   - "Lua script stops immediately" → Use pokemon_tracker_v3_fixed.lua
 
   Just run the start scripts - they handle almost everything automatically! 🎮
+  

@@ -10,9 +10,10 @@ import logging
 from enum import Enum
 from typing import Optional, Dict, Any
 from sqlalchemy.exc import IntegrityError  # type: ignore
+from ..utils.logging_config import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger('database')
 
 
 class ExpectedIntegrityTag(Enum):

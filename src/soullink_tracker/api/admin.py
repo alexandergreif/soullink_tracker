@@ -24,8 +24,9 @@ from .schemas import (
     JWTTokenResponse,
 )
 from typing import List
+from ..utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('api')
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
 

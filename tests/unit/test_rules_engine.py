@@ -370,6 +370,7 @@ class TestLegacyRulesEngine:
         
         # Mock database queries - player2 has finalized encounter on different route (32)
         mock_config.app.feature_v3_eventstore = True  # v3-only architecture
+        route_progress = RouteProgress(
             run_id=self.run_id,
             player_id=self.player2_id,
             route_id=32,  # Different route
