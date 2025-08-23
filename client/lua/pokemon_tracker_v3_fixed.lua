@@ -10,13 +10,34 @@ FIXES:
 - Improved memory address compatibility
 ]]
 
--- Configuration
-local CONFIG = {
-    output_dir = "C:/temp/soullink_events/",  -- Directory to write JSON files
-    poll_interval = 60,                      -- Frames between checks (1 second at 60fps)
-    debug = true,                            -- Enable debug logging
-    max_runtime = 3600                       -- Maximum runtime in seconds (1 hour)
-}
+-- Load configuration from external file
+local function load_config()
+    local config_file = "client/lua/config.lua"
+    local success, config = pcall(dofile, config_file)
+    
+    if success and config then
+        log("Configuration loaded from " .. config_file)
+        return config
+    else
+        log_error("Failed to load config from " .. config_file .. ", using defaults")
+        log_error("Please copy config_template.lua to config.lua and fill in your values")
+        
+        -- Default configuration (will cause 422 errors without proper UUIDs)
+        return {
+            api_base_url = "http://127.0.0.1:8000",
+            run_id = "MISSING_RUN_ID",
+            player_id = "MISSING_PLAYER_ID",
+            output_dir = "C:/temp/soullink_events/",
+            poll_interval = 60,
+            debug = true,
+            max_runtime = 3600,
+            memory_profile = "US"
+        }
+    end
+end
+
+-- Load configuration
+local CONFIG = load_config()
 
 -- Memory addresses for Pokemon HGSS (Multiple region support)
 local MEMORY_PROFILES = {
@@ -28,7 +49,10 @@ local MEMORY_PROFILES = {
         battle_state = 0x02226E18,
         current_route = 0x02256AA4,
         current_map = 0x02256AA6,
-        menu_state = 0x021C4D94
+        menu_state = 0x021C4D94,
+        -- Additional addresses for encounter detection
+        player_state = 0x021BF6A0,  -- Player state (surfing, fishing, etc.)
+        rod_type = 0x021D4F0C       -- Current rod type when fishing
     },
     -- EU versions (alternate addresses)
     EU = {
@@ -38,7 +62,9 @@ local MEMORY_PROFILES = {
         battle_state = 0x02226E18,
         current_route = 0x02256AA4,
         current_map = 0x02256AA6,
-        menu_state = 0x021C4D94
+        menu_state = 0x021C4D94,
+        player_state = 0x021BF6A0,
+        rod_type = 0x021D4F0C
     }
 }
 
@@ -66,6 +92,8 @@ local game_state = {
     in_encounter = false,
     last_wild_species = 0,
     last_wild_level = 0,
+    last_encounter_method = "unknown",
+    last_rod_kind = nil,
     startup_time = os.time(),
     frame_count = 0,
     last_status_update = 0
@@ -192,32 +220,93 @@ local function get_current_location()
     }
 end
 
--- V3 Event Creation Functions
-local function create_encounter_event(wild_species, wild_level, wild_pokemon, location)
-    local json_data = string.format([[{
-    "type": "encounter",
-    "time": "%s",
-    "route_id": %d,
-    "species_id": %d,
-    "level": %d,
-    "shiny": %s,
-    "method": "grass"
-}]], get_current_time(), location.route_id, wild_species, wild_level, tostring(wild_pokemon.shiny))
+-- Detect encounter method and rod type
+local function detect_encounter_method()
+    local player_state = safe_read_u8(MEMORY.player_state)
+    local method = "unknown"
+    local rod_kind = nil
+    
+    -- Check player state for encounter method
+    -- These values need calibration for HGSS
+    if player_state == 0x04 then
+        method = "surf"
+    elseif player_state == 0x08 or player_state == 0x10 then
+        method = "fish"
+        -- Detect rod type
+        local rod_value = safe_read_u8(MEMORY.rod_type)
+        if rod_value == 1 then
+            rod_kind = "old"
+        elseif rod_value == 2 then
+            rod_kind = "good"
+        elseif rod_value == 3 then
+            rod_kind = "super"
+        else
+            rod_kind = "old"  -- Default to old rod if unknown
+        end
+    else
+        -- Default to grass for normal encounters
+        method = "grass"
+    end
+    
+    return method, rod_kind
+end
+
+-- V3 Event Creation Functions with proper UUID fields
+local function create_encounter_event(wild_species, wild_level, wild_pokemon, location, method, rod_kind)
+    -- Validate that we have proper UUIDs
+    if CONFIG.run_id == "MISSING_RUN_ID" or CONFIG.player_id == "MISSING_PLAYER_ID" then
+        log_error("Missing run_id or player_id in config! Events will fail with 422 errors.")
+        log_error("Please configure config.lua with proper UUIDs from the admin panel.")
+    end
+    
+    -- Build the JSON event with conditional rod_kind
+    local json_parts = {
+        string.format('    "type": "encounter"'),
+        string.format('    "run_id": "%s"', CONFIG.run_id),
+        string.format('    "player_id": "%s"', CONFIG.player_id),
+        string.format('    "time": "%s"', get_current_time()),
+        string.format('    "route_id": %d', location.route_id),
+        string.format('    "species_id": %d', wild_species),
+        string.format('    "level": %d', wild_level),
+        string.format('    "shiny": %s', tostring(wild_pokemon.shiny)),
+        string.format('    "method": "%s"', method)
+    }
+    
+    -- Add rod_kind only for fishing encounters
+    if method == "fish" and rod_kind then
+        table.insert(json_parts, string.format('    "rod_kind": "%s"', rod_kind))
+    end
+    
+    -- Add event version
+    table.insert(json_parts, '    "event_version": "v3"')
+    
+    local json_data = "{\n" .. table.concat(json_parts, ",\n") .. "\n}"
     
     write_event_file(json_data)
-    log("Encounter: Species " .. wild_species .. " Level " .. wild_level .. " Route " .. location.route_id)
+    log(string.format("Encounter: Species %d Level %d Route %d Method %s%s",
+        wild_species, wild_level, location.route_id, method,
+        rod_kind and (" (" .. rod_kind .. " rod)") or ""))
 end
 
 local function create_catch_result_event(status, species_id, route_id)
+    -- Validate that we have proper UUIDs
+    if CONFIG.run_id == "MISSING_RUN_ID" or CONFIG.player_id == "MISSING_PLAYER_ID" then
+        log_error("Missing run_id or player_id in config! Events will fail with 422 errors.")
+        return
+    end
+    
     local json_data = string.format([[{
     "type": "catch_result",
+    "run_id": "%s",
+    "player_id": "%s",
     "time": "%s",
     "encounter_ref": {
         "route_id": %d,
         "species_id": %d
     },
-    "status": "%s"
-}]], get_current_time(), route_id, species_id, status)
+    "status": "%s",
+    "event_version": "v3"
+}]], CONFIG.run_id, CONFIG.player_id, get_current_time(), route_id, species_id, status)
     
     write_event_file(json_data)
     log("Catch Result: " .. status .. " for Species " .. species_id)
@@ -236,8 +325,13 @@ local function detect_encounter()
         game_state.last_wild_species = wild_species
         game_state.last_wild_level = wild_level
         
+        -- Detect encounter method and rod type
+        local method, rod_kind = detect_encounter_method()
+        game_state.last_encounter_method = method
+        game_state.last_rod_kind = rod_kind
+        
         local wild_pokemon = read_pokemon_data(MEMORY.wild_pokemon)
-        create_encounter_event(wild_species, wild_level, wild_pokemon, location)
+        create_encounter_event(wild_species, wild_level, wild_pokemon, location, method, rod_kind)
     end
     
     -- Detect battle end and catch result (simplified)
@@ -333,10 +427,26 @@ local function initialize()
     -- Write a test event to verify file writing works
     local test_event = string.format([[{
     "type": "test",
+    "run_id": "%s",
+    "player_id": "%s",
     "time": "%s",
-    "message": "Script initialized successfully"
-}]], get_current_time())
+    "message": "Script initialized successfully",
+    "event_version": "v3"
+}]], CONFIG.run_id, CONFIG.player_id, get_current_time())
     write_event_file(test_event)
+    
+    -- Warn user if configuration is incomplete
+    if CONFIG.run_id == "MISSING_RUN_ID" or CONFIG.player_id == "MISSING_PLAYER_ID" then
+        log_error("⚠️  CONFIGURATION INCOMPLETE ⚠️")
+        log_error("run_id: " .. CONFIG.run_id)
+        log_error("player_id: " .. CONFIG.player_id)
+        log_error("Events will fail with 422 errors until config.lua is properly configured!")
+        log_error("Get UUIDs from: " .. CONFIG.api_base_url .. "/admin")
+    else
+        log("✅ Configuration complete with valid UUIDs")
+        log("run_id: " .. CONFIG.run_id)
+        log("player_id: " .. CONFIG.player_id)
+    end
 end
 
 -- === MAIN EXECUTION ===

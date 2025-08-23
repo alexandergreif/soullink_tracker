@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from .enums import EncounterStatus, EncounterMethod
 # Legacy model imports removed in v3-only architecture
-from ..config import get_config
+from ..db.models import Blocklist, Encounter, LinkMember  # Still needed for type hints
 from ..domain.events import EncounterEvent, CatchResultEvent
 from ..domain.rules import RunState, PlayerRouteState, evaluate_encounter
 from ..store.event_store import EventStore
@@ -37,7 +37,6 @@ class RulesEngine:
         if run_id in self._state_cache:
             return self._state_cache[run_id]
 
-        config = get_config()
         # v3-only architecture: always use event store
         state = self._build_state_from_eventstore(run_id)
 

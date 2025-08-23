@@ -1,0 +1,12 @@
+{
+  "type": "encounter",
+  "run_id": "d6716301-2bc1-48f7-b5ce-9e41c8c37740",
+  "player_id": "64460608-afcd-4b34-b7c5-f5b861032c92",
+  "time": "2025-08-23T13:41:00Z",
+  "route_id": 32,
+  "species_id": 129,
+  "level": 10,
+  "shiny": false,
+  "method": "fish",
+  "rod_kind": "old"
+}

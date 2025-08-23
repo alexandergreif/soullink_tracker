@@ -57,21 +57,12 @@ async def websocket_endpoint(
         config = get_config()
         
         try:
-            # Try session token authentication first
-            player = get_current_player_from_session_token(token.strip(), db)
-            logger.info(f"WebSocket authentication successful (session token): player_id={player.id}, player_name={player.name}")
-        except HTTPException as session_error:
-            # Fall back to legacy Bearer token if allowed
-            if config.app.auth_allow_legacy_bearer:
-                try:
-                    player = get_current_player_from_token(token.strip(), db)
-                    logger.info(f"WebSocket authentication successful (legacy Bearer token): player_id={player.id}, player_name={player.name}")
-                except HTTPException as bearer_error:
-                    logger.warning(f"WebSocket authentication failed - both session token and legacy Bearer token invalid: session_error={session_error.detail}, bearer_error={bearer_error.detail}")
-                    raise bearer_error
-            else:
-                logger.warning(f"WebSocket authentication failed - session token invalid and legacy Bearer tokens disabled: {session_error.detail}")
-                raise session_error
+            # Use the updated authentication method that supports JWT, session, and legacy Bearer tokens
+            player = get_current_player_from_token(token.strip(), db)
+            logger.info(f"WebSocket authentication successful: player_id={player.id}, player_name={player.name}")
+        except HTTPException as auth_error:
+            logger.warning(f"WebSocket authentication failed: {auth_error.detail}")
+            raise auth_error
 
         # Verify the run exists
         run = db.query(Run).filter(Run.id == run_id).first()

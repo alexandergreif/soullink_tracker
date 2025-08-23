@@ -136,7 +136,10 @@ class SoulLinkWatcherLauncher:
         
         # Test watcher import
         try:
-            import soullink_watcher
+            import importlib.util
+            spec = importlib.util.find_spec("soullink_watcher")
+            if spec is None:
+                raise ImportError("soullink_watcher not found")
             self.logger.info("Watcher package imported successfully")
         except ImportError as e:
             self.logger.error(f"Cannot import watcher package: {e}")
@@ -156,7 +159,7 @@ class SoulLinkWatcherLauncher:
         if "SOULLINK_API_URL" not in os.environ:
             os.environ["SOULLINK_API_URL"] = "http://127.0.0.1:8000"
         
-        self.logger.info(f"Environment configured:")
+        self.logger.info("Environment configured:")
         self.logger.info(f"  Lua Dir: {os.environ['SOULLINK_LUA_DIR']}")
         self.logger.info(f"  User Data Dir: {os.environ['SOULLINK_USER_DATA_DIR']}")
         self.logger.info(f"  Spool Dir: {os.environ['SOULLINK_WATCHER_SPOOL_DIR']}")
@@ -181,7 +184,9 @@ class SoulLinkWatcherLauncher:
             try:
                 template_content = template_path.read_text(encoding="utf-8")
                 config_content = template_content.replace("{{API_URL}}", api_url)
-                config_content = config_content.replace("{{SPOOL_DIR}}", str(self.resource_manager.spool_dir).replace("\\", "\\\\"))
+                # Use forward slashes for Lua path compatibility (works on both Windows and Unix)
+                spool_dir_lua = str(self.resource_manager.spool_dir).replace("\\", "/")
+                config_content = config_content.replace("{{SPOOL_DIR}}", spool_dir_lua)
                 config_path.write_text(config_content, encoding="utf-8")
                 self.logger.info(f"Lua config created: {config_path}")
             except Exception as e:

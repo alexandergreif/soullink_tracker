@@ -182,14 +182,14 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                 # Validate UUID v4 format
                 try:
                     parsed_uuid = UUID(idempotency_key)
-                    # Check if it's UUID v4
-                    if parsed_uuid.version != 4:
-                        raise ValueError("Not a UUID v4")
+                    # Check if it's UUID v4 or v5 (both are RFC 4122 compliant)
+                    if parsed_uuid.version not in [4, 5]:
+                        raise ValueError("Not a UUID v4 or v5")
                 except (ValueError, AttributeError):
                     raise ProblemDetailsException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         title="Invalid Idempotency Key",
-                        detail="Idempotency-Key header must be a valid UUID v4",
+                        detail="Idempotency-Key header must be a valid UUID v4 or v5",
                         type_uri="https://datatracker.ietf.org/doc/html/rfc4122#section-4.4",
                     )
 

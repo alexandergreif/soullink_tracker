@@ -7,8 +7,10 @@ Replaces complex setup scripts with runtime configuration.
 
 import json
 import os
+import platform
+import secrets
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
 import logging
 
@@ -59,6 +61,11 @@ class AppConfig:
     session_ttl_days: int = 30  # Session token TTL in days
     password_hash_iterations: int = 120_000  # PBKDF2 iterations
     auth_allow_legacy_bearer: bool = True  # Allow legacy bearer token auth
+    
+    # JWT Configuration
+    jwt_secret_key: str = "your-secret-key-change-in-production"  # Will be auto-generated
+    jwt_access_token_expires_minutes: int = 15  # Access token TTL
+    jwt_refresh_token_expires_days: int = 30  # Refresh token TTL
 
     # Logging
     log_level: str = "INFO"
@@ -149,6 +156,9 @@ class ConfigManager:
         # Check for database URL override
         db_url = os.getenv("SOULLINK_DATABASE_URL") or DatabaseConfig().url
 
+        # Generate secure JWT secret key
+        jwt_secret_key = secrets.token_urlsafe(64)  # 512-bit key
+        
         # Create default configuration
         config = SoulLinkConfig(
             app=AppConfig(
@@ -160,6 +170,7 @@ class ConfigManager:
                 is_development=env_info["is_development"],
                 log_level="DEBUG" if env_info["debug"] else "INFO",
                 feature_v3_eventstore=env_info["feature_v3_eventstore"],
+                jwt_secret_key=jwt_secret_key,
             ),
             server=ServerConfig(
                 debug=env_info["debug"], auto_reload=env_info["is_development"]
@@ -307,6 +318,46 @@ class ConfigManager:
         if self.config is None:
             self.load_config()
         return self.config.app.is_development
+
+    def validate_config(self) -> List[str]:
+        """Validate configuration and return list of warnings/errors."""
+        if self.config is None:
+            self.load_config()
+        
+        issues = []
+        
+        # Check critical directories exist
+        if self.config.app.web_dir:
+            web_path = Path(self.config.app.web_dir)
+            if not web_path.exists():
+                issues.append(f"Web directory not found: {web_path}")
+        
+        if self.config.app.data_dir:
+            data_path = Path(self.config.app.data_dir)
+            if not data_path.exists():
+                issues.append(f"Data directory not found: {data_path}")
+        
+        # Check database file is writable
+        db_url = self.config.database.url
+        if db_url.startswith("sqlite:///"):
+            db_path = Path(db_url.replace("sqlite:///", ""))
+            db_dir = db_path.parent
+            if not db_dir.exists():
+                try:
+                    db_dir.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    issues.append(f"Cannot create database directory: {e}")
+            elif not os.access(db_dir, os.W_OK):
+                issues.append(f"Database directory is not writable: {db_dir}")
+        
+        # Windows-specific checks
+        if platform.system() == "Windows":
+            # Check for common Windows path issues
+            for path_str in [self.config.app.web_dir, self.config.app.data_dir, self.config.app.lua_dir]:
+                if path_str and "\\" in path_str and "/" in path_str:
+                    issues.append(f"Mixed path separators detected: {path_str}")
+        
+        return issues
 
 
 # Global config manager instance

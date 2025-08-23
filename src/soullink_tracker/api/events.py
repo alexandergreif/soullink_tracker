@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Request, Query, status
 from sqlalchemy.orm import Session
 
 from ..db.database import get_db
-from ..db.models import Run, Player, Species, Route, IdempotencyKey
+from ..db.models import Run, Player, Species, IdempotencyKey, Encounter
 from ..core.enums import EncounterStatus
 from ..auth.dependencies import get_current_player
 
@@ -18,7 +18,6 @@ from ..auth.dependencies import get_current_player
 from ..domain.events import EncounterEvent, CatchResultEvent, FaintEvent
 from ..store.event_store import EventStore, EventStoreError
 from ..store.projections import ProjectionEngine
-from ..config import get_config
 
 # WebSocket broadcasting for real-time updates
 from ..events.websocket_manager import websocket_manager
@@ -489,12 +488,43 @@ def _convert_to_domain_event(
             fe_finalized=False,
         )
     elif event.type == "catch_result":
+        # Handle both V3 encounter_id and V2 legacy encounter_ref formats
+        if event.encounter_id:
+            # V3 format - direct encounter reference
+            encounter_id = event.encounter_id
+        elif event.encounter_ref:
+            # V2 legacy format - lookup encounter by route/species
+            encounter = (
+                db.query(Encounter)
+                .filter(
+                    Encounter.run_id == event.run_id,
+                    Encounter.player_id == event.player_id,
+                    Encounter.route_id == event.encounter_ref["route_id"],
+                    Encounter.species_id == event.encounter_ref["species_id"],
+                )
+                .order_by(Encounter.time.desc())
+                .first()
+            )
+            if not encounter:
+                raise ProblemDetailsException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    title="Encounter Not Found",
+                    detail=f"No encounter found for route {event.encounter_ref['route_id']} species {event.encounter_ref['species_id']}",
+                )
+            encounter_id = encounter.id
+        else:
+            raise ProblemDetailsException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                title="Invalid Catch Result",
+                detail="Either encounter_id or encounter_ref must be provided",
+            )
+
         return CatchResultEvent(
             event_id=uuid4(),
             run_id=event.run_id,
             player_id=event.player_id,
             timestamp=event.time,
-            encounter_id=event.encounter_id,
+            encounter_id=encounter_id,
             result=event.result,
         )
     elif event.type == "faint":

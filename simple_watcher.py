@@ -13,14 +13,42 @@ import time
 import json
 import requests
 import logging
+import random
 from pathlib import Path
-from datetime import datetime
-from uuid import uuid4
+from datetime import datetime, timezone
+from uuid import uuid4, uuid5, UUID, NAMESPACE_DNS
+import re
+
+# Import circuit breaker from watcher package if available
+try:
+    from watcher.src.soullink_watcher.circuit_breaker import CircuitBreaker, CircuitOpenError
+    CIRCUIT_BREAKER_AVAILABLE = True
+except ImportError:
+    CIRCUIT_BREAKER_AVAILABLE = False
+    
+    # Fallback dummy classes
+    class CircuitBreaker:
+        def __init__(self, *args, **kwargs):
+            pass
+        def call(self, func):
+            return func()
+        def get_stats(self):
+            return {"state": "disabled"}
+    
+    class CircuitOpenError(Exception):
+        pass
 
 # Configuration
+# Determine default watch directory based on platform
+import platform
+if platform.system() == 'Windows':
+    default_watch_dir = Path(os.environ.get('TEMP', 'C:/temp')) / 'soullink_events'
+else:
+    default_watch_dir = Path('/tmp/soullink_events')
+
 CONFIG = {
     'api_base_url': 'http://127.0.0.1:8000',
-    'watch_directory': 'C:/temp/soullink_events/',
+    'watch_directory': str(default_watch_dir),
     'poll_interval': 2,  # seconds
     'max_retries': 3,
     'timeout': 10,
@@ -42,11 +70,58 @@ class SimpleWatcher:
         self.player_id = None
         self.player_token = None
         
+        # Initialize circuit breaker for API requests
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            success_threshold=2,
+            timeout_seconds=60,
+            reset_timeout_seconds=300  # 5 minutes
+        )
+        logger.info(f"Circuit breaker initialized (available: {CIRCUIT_BREAKER_AVAILABLE})")
+    
+    def make_http_request(self, method, url, **kwargs):
+        """Make HTTP request with circuit breaker protection."""
+        def make_request():
+            if method.upper() == 'GET':
+                return requests.get(url, **kwargs)
+            elif method.upper() == 'POST':
+                return requests.post(url, **kwargs)
+            else:
+                return requests.request(method, url, **kwargs)
+        
+        try:
+            return self.circuit_breaker.call(make_request)
+        except CircuitOpenError:
+            logger.error(f"Circuit breaker is OPEN - failing fast for {url}")
+            raise
+    
+    def retry_with_backoff(self, func, max_retries=None, base_delay=1.0, max_delay=60.0, jitter_ratio=0.1):
+        """Retry a function with exponential backoff and jitter."""
+        if max_retries is None:
+            max_retries = CONFIG.get('max_retries', 3)
+        
+        for attempt in range(max_retries + 1):
+            try:
+                return func()
+            except (requests.exceptions.RequestException, CircuitOpenError) as e:
+                if attempt == max_retries:
+                    logger.error(f"Final retry attempt failed: {e}")
+                    raise
+                
+                # Calculate backoff delay
+                delay = min(max_delay, base_delay * (2 ** attempt))
+                jitter = random.uniform(-jitter_ratio, jitter_ratio) * delay
+                delay = max(0.1, delay + jitter)
+                
+                logger.warning(f"Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                logger.info(f"Retrying in {delay:.1f} seconds...")
+                time.sleep(delay)
+    
     def get_admin_info(self):
         """Get run and player information from the admin API."""
         try:
             # Get available runs
-            response = requests.get(f"{CONFIG['api_base_url']}/v1/admin/runs", timeout=CONFIG['timeout'])
+            response = self.make_http_request('GET', f"{CONFIG['api_base_url']}/v1/admin/runs", timeout=CONFIG['timeout'])
             if response.status_code == 200:
                 runs = response.json()  # API returns list directly, not object with 'runs' key
                 if runs and isinstance(runs, list):
@@ -56,7 +131,7 @@ class SimpleWatcher:
                     logger.info(f"Using run: {run_data['name']} ({self.run_id})")
                     
                     # Get players for this run
-                    players_response = requests.get(
+                    players_response = self.make_http_request('GET',
                         f"{CONFIG['api_base_url']}/v1/runs/{self.run_id}/players",
                         timeout=CONFIG['timeout']
                     )
@@ -102,7 +177,7 @@ class SimpleWatcher:
                 }
             }
             
-            response = requests.post(
+            response = self.make_http_request('POST',
                 f"{CONFIG['api_base_url']}/v1/admin/runs",
                 json=run_data,
                 timeout=CONFIG['timeout']
@@ -120,7 +195,7 @@ class SimpleWatcher:
                     'region': 'EU'
                 }
                 
-                player_response = requests.post(
+                player_response = self.make_http_request('POST',
                     f"{CONFIG['api_base_url']}/v1/admin/runs/{self.run_id}/players",
                     json=player_data,
                     timeout=CONFIG['timeout']
@@ -160,6 +235,119 @@ class SimpleWatcher:
         logger.error("Failed to setup run and player")
         return False
     
+    def normalize_timestamp(self, timestamp_str):
+        """Normalize timestamp to ISO 8601 UTC format."""
+        if not timestamp_str:
+            return datetime.now(timezone.utc).isoformat()
+        
+        # If already in correct format (ends with Z or timezone), return as-is
+        if timestamp_str.endswith('Z') or '+' in timestamp_str[-6:]:
+            return timestamp_str
+            
+        # Try to parse various formats
+        try:
+            # Try parsing as ISO format without timezone
+            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.isoformat()
+        except:
+            # If parsing fails, use current time
+            logger.warning(f"Could not parse timestamp '{timestamp_str}', using current time")
+            return datetime.now(timezone.utc).isoformat()
+    
+    def validate_uuid(self, value, field_name):
+        """Validate and normalize UUID string."""
+        if not value:
+            raise ValueError(f"{field_name} is required")
+            
+        # If already a valid UUID string, return it
+        if isinstance(value, str):
+            try:
+                # Validate UUID format
+                UUID(value)
+                return value
+            except ValueError:
+                raise ValueError(f"{field_name} must be a valid UUID, got: {value}")
+        
+        raise ValueError(f"{field_name} must be a string UUID, got type: {type(value)}")
+    
+    def generate_idempotency_key(self, event_data, file_path):
+        """Generate RFC 4122 compliant UUID v4/v5 for idempotency.
+        
+        Uses deterministic UUID v5 generation to ensure same event content
+        generates same UUID for reliable retry behavior.
+        """
+        if 'event_id' in event_data:
+            # Validate existing event_id is UUID v4 or v5
+            try:
+                parsed = UUID(event_data['event_id'])
+                if parsed.version in [4, 5]:
+                    return str(parsed)
+            except (ValueError, AttributeError):
+                pass  # Fall through to generate new UUID
+        
+        # Create deterministic UUID v5 from event content
+        # This ensures same event generates same UUID for retries
+        event_str = f"{event_data['type']}_{event_data['player_id']}_{event_data.get('time', '')}_{file_path.name}"
+        return str(uuid5(NAMESPACE_DNS, event_str))
+    
+    def validate_event(self, event_data):
+        """Validate event data before sending to API."""
+        errors = []
+        
+        # Check event type
+        if 'type' not in event_data:
+            errors.append("Missing required field 'type'")
+            return errors
+        
+        event_type = event_data['type']
+        
+        # Common required fields
+        required_fields = ['run_id', 'player_id', 'time']
+        for field in required_fields:
+            if field not in event_data:
+                errors.append(f"Missing required field '{field}'")
+        
+        # Type-specific validation
+        if event_type == 'encounter':
+            encounter_fields = ['route_id', 'species_id', 'level', 'shiny', 'method']
+            for field in encounter_fields:
+                if field not in event_data:
+                    errors.append(f"Missing encounter field '{field}'")
+            
+            # Special validation for fishing events
+            if event_data.get('method') == 'fish':
+                if 'rod_kind' not in event_data:
+                    errors.append("Fishing encounter must include 'rod_kind' field")
+                elif event_data['rod_kind'] not in ['old', 'good', 'super']:
+                    errors.append(f"Invalid rod_kind: {event_data['rod_kind']} (must be 'old', 'good', or 'super')")
+        
+        elif event_type == 'catch_result':
+            # Must have either encounter_id or encounter_ref
+            if 'encounter_id' not in event_data and 'encounter_ref' not in event_data:
+                errors.append("catch_result must have either 'encounter_id' or 'encounter_ref'")
+            
+            # Must have either result or status
+            if 'result' not in event_data and 'status' not in event_data:
+                errors.append("catch_result must have either 'result' or 'status'")
+            
+            # Validate encounter_ref structure if present
+            if 'encounter_ref' in event_data:
+                ref = event_data['encounter_ref']
+                if not isinstance(ref, dict):
+                    errors.append("encounter_ref must be an object")
+                elif 'route_id' not in ref or 'species_id' not in ref:
+                    errors.append("encounter_ref must contain 'route_id' and 'species_id'")
+        
+        elif event_type == 'faint':
+            faint_fields = ['pokemon_key']
+            for field in faint_fields:
+                if field not in event_data:
+                    errors.append(f"Missing faint field '{field}'")
+        
+        return errors
+    
     def process_json_file(self, file_path):
         """Process a single JSON event file."""
         try:
@@ -169,27 +357,71 @@ class SimpleWatcher:
             # Add required fields for V3 API
             if 'run_id' not in event_data:
                 event_data['run_id'] = self.run_id
+            else:
+                # Validate existing run_id
+                try:
+                    event_data['run_id'] = self.validate_uuid(event_data['run_id'], 'run_id')
+                except ValueError as e:
+                    logger.warning(f"Invalid run_id in event, using configured: {e}")
+                    event_data['run_id'] = self.run_id
+            
             if 'player_id' not in event_data:
                 event_data['player_id'] = self.player_id
+            else:
+                # Validate existing player_id
+                try:
+                    event_data['player_id'] = self.validate_uuid(event_data['player_id'], 'player_id')
+                except ValueError as e:
+                    logger.warning(f"Invalid player_id in event, using configured: {e}")
+                    event_data['player_id'] = self.player_id
             
-            # Generate event_id if missing
-            if 'event_id' not in event_data:
-                event_data['event_id'] = str(uuid4())
+            # Normalize timestamp
+            if 'time' in event_data:
+                event_data['time'] = self.normalize_timestamp(event_data['time'])
+            else:
+                event_data['time'] = datetime.now(timezone.utc).isoformat()
             
-            # Convert 'time' to 'timestamp' if needed
-            if 'time' in event_data and 'timestamp' not in event_data:
-                event_data['timestamp'] = event_data['time']
+            # Handle method field normalization (V2 might use encounter_method)
+            if 'encounter_method' in event_data and 'method' not in event_data:
+                event_data['method'] = event_data.pop('encounter_method')
+            
+            # Normalize method values
+            if 'method' in event_data:
+                method_map = {
+                    'walking': 'grass',
+                    'grass': 'grass',
+                    'surfing': 'surf',
+                    'surf': 'surf',
+                    'fishing': 'fish',
+                    'fish': 'fish',
+                    'static': 'static',
+                    'unknown': 'unknown'
+                }
+                method = event_data['method'].lower()
+                event_data['method'] = method_map.get(method, method)
+            
+            # Validate event before sending
+            validation_errors = self.validate_event(event_data)
+            if validation_errors:
+                logger.error(f"Event validation failed for {file_path.name}:")
+                for error in validation_errors:
+                    logger.error(f"  - {error}")
+                logger.debug(f"Event data: {json.dumps(event_data, indent=2)}")
+                return False
             
             logger.info(f"Processing event: {event_data['type']} from {file_path.name}")
+            
+            # Generate RFC 4122 compliant idempotency key
+            idempotency_key = self.generate_idempotency_key(event_data, file_path)
             
             # Send to API
             headers = {
                 'Authorization': f'Bearer {self.player_token}',
                 'Content-Type': 'application/json',
-                'Idempotency-Key': str(uuid4())
+                'Idempotency-Key': idempotency_key
             }
             
-            response = requests.post(
+            response = self.make_http_request('POST',
                 f"{CONFIG['api_base_url']}/v1/events",
                 json=event_data,
                 headers=headers,

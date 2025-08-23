@@ -100,6 +100,20 @@ app.include_router(auth.router)
 @app.on_event("startup")
 async def startup_event():
     """Initialize static files and other startup tasks."""
+    # Validate configuration on startup
+    from .config import config_manager
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    issues = config_manager.validate_config()
+    
+    if issues:
+        logger.warning("Configuration validation warnings:")
+        for issue in issues:
+            logger.warning(f"  - {issue}")
+    else:
+        logger.info("Configuration validation passed")
+    
     init_static_files()
 
 

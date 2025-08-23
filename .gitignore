@@ -143,11 +143,28 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
 test.db*
 *.log
 events_*.ndjson
 client/logs/
 cloudflared.log
+
+# SQLite database files (all variants)
+soullink_tracker.db*
+
+# Test and debug files
+test_*.py
+debug_*.py
+
+# Temporary directories and files
+temp/
+tmp/
+spool/
+
+# Claude IDE settings (personal)
+.claude/settings.local.json
 
 # Portable build artifacts
 logs/

@@ -14,6 +14,7 @@ from .security import (
     validate_session_token_format,
     verify_password
 )
+from .jwt_auth import jwt_manager
 from ..config import get_config
 from ..db.database import get_db
 from ..db.models import Player, PlayerSession, Run
@@ -38,7 +39,25 @@ def get_current_player(
     token = credentials.credentials
     config = get_config()
 
-    # Try session token authentication first
+    # Try JWT token authentication first (for long sessions)
+    try:
+        payload = jwt_manager.verify_access_token(token)
+        player_id = UUID(payload["sub"])
+        
+        # Get player from database to ensure it still exists
+        player = db.query(Player).filter(Player.id == player_id).first()
+        if not player:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Player not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return player
+        
+    except HTTPException:
+        pass  # JWT token failed, try session token
+    
+    # Try session token authentication
     try:
         validate_session_token_format(token)
         return get_current_player_from_session_token(token, db)
