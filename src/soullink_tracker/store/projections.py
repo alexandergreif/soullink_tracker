@@ -10,6 +10,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from ..utils.logging_config import get_logger, log_exception
+
+logger = get_logger('projection')
 
 from .integrity_policy import (
     ExpectedIntegrityTag,

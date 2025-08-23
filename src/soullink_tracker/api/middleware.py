@@ -10,6 +10,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from ..auth.rate_limiter import GlobalRateLimiter, RateLimitConfig
+from ..utils.logging_config import get_logger, log_exception
+
+logger = get_logger('middleware')
 
 
 class ProblemDetailsException(HTTPException):
@@ -42,6 +45,7 @@ class ProblemDetailsMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
         except ProblemDetailsException as exc:
+            logger.warning(f"ProblemDetails: {exc.status_code} - {exc.title}: {exc.detail}")
             return self._create_problem_response(
                 status_code=exc.status_code,
                 title=exc.title,
@@ -146,6 +150,9 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 limit = (
                     self.batch_request_limit if is_batch else self.single_request_limit
                 )
+                
+                if length > limit:
+                    logger.warning(f"Request size limit exceeded: {length} > {limit} for {request.url.path}")
 
                 if length > limit:
                     raise ProblemDetailsException(

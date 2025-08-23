@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import time
 from typing import Dict, List, Optional, Any
 from uuid import UUID
@@ -21,8 +20,9 @@ from .schemas import (
     SoulLinkUpdateMessage,
 )
 from ..core.enums import EncounterMethod, EncounterStatus
+from ..utils.logging_config import get_logger, log_exception
 
-logger = logging.getLogger(__name__)
+logger = get_logger('websocket')
 
 
 @dataclass
