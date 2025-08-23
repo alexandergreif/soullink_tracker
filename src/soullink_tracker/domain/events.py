@@ -8,7 +8,7 @@ from abc import abstractmethod
 from datetime import datetime, timezone
 from typing import Union, Optional, Literal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict  # type: ignore
 
 from ..core.enums import EncounterMethod, EncounterStatus, RodKind
 
@@ -64,7 +64,7 @@ class EncounterEvent(BaseEvent):
 
 class CatchResultEvent(BaseEvent):
     """Result of attempting to catch an encountered Pokemon."""
-    
+
     model_config = {"populate_by_name": True}
 
     # Reference to the encounter
@@ -151,8 +151,6 @@ class FamilyBlockedEvent(BaseEvent):
     def event_type(self) -> str:
         """Return the event type identifier."""
         return "family_blocked"
-
-
 
 
 # Union type for all possible events

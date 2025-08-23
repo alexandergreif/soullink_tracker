@@ -12,7 +12,7 @@ from .security import (
     validate_bearer_token_format,
     verify_bearer_token,
     validate_session_token_format,
-    verify_password
+    verify_password,
 )
 from .jwt_auth import jwt_manager
 from ..config import get_config
@@ -43,7 +43,7 @@ def get_current_player(
     try:
         payload = jwt_manager.verify_access_token(token)
         player_id = UUID(payload["sub"])
-        
+
         # Get player from database to ensure it still exists
         player = db.query(Player).filter(Player.id == player_id).first()
         if not player:
@@ -53,10 +53,10 @@ def get_current_player(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return player
-        
+
     except HTTPException:
         pass  # JWT token failed, try session token
-    
+
     # Try session token authentication
     try:
         validate_session_token_format(token)
@@ -68,12 +68,12 @@ def get_current_player(
                 validate_bearer_token_format(token)
                 # Find player by token hash
                 players = db.query(Player).filter(Player.token_hash.isnot(None)).all()
-                
+
                 # Verify token against each player
                 for candidate in players:
                     if verify_bearer_token(token, candidate.token_hash):
                         return candidate
-                        
+
                 # Legacy Bearer token not found
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -82,7 +82,7 @@ def get_current_player(
                 )
             except HTTPException:
                 pass
-    
+
     # Both authentication methods failed
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -112,23 +112,23 @@ def get_current_player_optional(
 def get_current_player_from_session_token(token: str, db: Session) -> Player:
     """
     Get current player from session token.
-    
+
     Args:
         token: The session token to authenticate with
         db: Database session
-        
+
     Returns:
         Player: The authenticated player
-        
+
     Raises:
         HTTPException: If token is invalid or expired
     """
     import hashlib
-    
+
     # Hash the token to find the session
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     now = datetime.now(timezone.utc)
-    
+
     # Find session by token hash with player joined
     session = (
         db.query(PlayerSession)
@@ -137,18 +137,18 @@ def get_current_player_from_session_token(token: str, db: Session) -> Player:
         .filter(PlayerSession.expires_at > now)
         .first()
     )
-    
+
     if not session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # Update last seen time
     session.last_seen_at = now
     db.commit()
-    
+
     return session.player
 
 
@@ -157,21 +157,21 @@ def authenticate_with_credentials(
     run_name: Optional[str],
     player_name: str,
     password: str,
-    db: Session
+    db: Session,
 ) -> tuple[Player, Run]:
     """
     Authenticate player with run credentials (run ID/name + player name + password).
-    
+
     Args:
         run_id: Optional run UUID
         run_name: Optional run name (used if run_id not provided)
         player_name: Player name for authentication
         password: Run password
         db: Database session
-        
+
     Returns:
         tuple[Player, Run]: The authenticated player and run
-        
+
     Raises:
         HTTPException: If authentication fails
     """
@@ -180,41 +180,38 @@ def authenticate_with_credentials(
         run = db.query(Run).filter(Run.id == run_id).first()
         if not run:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Run not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
             )
     elif run_name:
         runs = db.query(Run).filter(func.lower(Run.name) == run_name.lower()).all()
         if not runs:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Run not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Run not found"
             )
         if len(runs) > 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Multiple runs found with that name, please use run ID"
+                detail="Multiple runs found with that name, please use run ID",
             )
         run = runs[0]
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Either run_id or run_name must be provided"
+            detail="Either run_id or run_name must be provided",
         )
-    
+
     # Verify password
     if not run.password_hash or not run.password_salt:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Run does not require password authentication"
+            detail="Run does not require password authentication",
         )
-    
+
     if not verify_password(password, run.password_salt, run.password_hash):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password"
         )
-    
+
     # Find player by name (case-insensitive)
     player = (
         db.query(Player)
@@ -222,13 +219,12 @@ def authenticate_with_credentials(
         .filter(func.lower(Player.name) == player_name.lower())
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found in this run"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Player not found in this run"
         )
-    
+
     return player, run
 
 

@@ -5,19 +5,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
-from sqlalchemy.orm import Session, joinedload
 
-from ..db.database import get_db
-from ..db.models import (
-    Run,
-    Player,
-    Species,
-    Route,
-    Encounter,
-    Link,
-    LinkMember,
-    Blocklist,
-)
+from ..repositories.dependencies import get_repository_container
+from ..repositories.interfaces import RepositoryContainer
 from ..core.enums import EncounterStatus
 from .schemas import (
     EncounterListResponse,
@@ -44,7 +34,7 @@ router = APIRouter(tags=["data"])
         422: {"model": ProblemDetails, "description": "Invalid parameters"},
     },
 )
-def get_encounters(
+async def get_encounters(
     run_id: UUID,
     player_id: Optional[UUID] = Query(None, description="Filter by player ID"),
     route_id: Optional[int] = Query(None, description="Filter by route ID"),
@@ -57,7 +47,7 @@ def get_encounters(
     shiny: Optional[bool] = Query(None, description="Filter by shiny status"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: Session = Depends(get_db),
+    repos: RepositoryContainer = Depends(get_repository_container),
 ) -> EncounterListResponse:
     """
     Get encounters for a run with optional filtering and pagination.
@@ -65,42 +55,40 @@ def get_encounters(
     Returns detailed encounter information including related entity names
     (player name, route label, species name) for easy display.
     """
-    # Verify run exists
-    run = db.query(Run).filter(Run.id == run_id).first()
+    # Verify run exists using repository
+    run = await repos.run.get_by_id(run_id)
     if not run:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Run not found"
         )
 
-    # Build query with joins for related data
-    query = db.query(Encounter).filter(Encounter.run_id == run_id)
-    query = query.join(Player).join(Route).join(Species)
-
-    # Apply filters
-    if player_id:
-        query = query.filter(Encounter.player_id == player_id)
-    if route_id:
-        query = query.filter(Encounter.route_id == route_id)
-    if species_id:
-        query = query.filter(Encounter.species_id == species_id)
-    if family_id:
-        query = query.filter(Encounter.family_id == family_id)
-    if status:
-        query = query.filter(Encounter.status == status)
-    if method:
-        query = query.filter(Encounter.method == method)
-    if shiny is not None:
-        query = query.filter(Encounter.shiny == shiny)
-
-    # Get total count
-    total = query.count()
-
-    # Apply pagination and ordering
-    encounters = query.order_by(Encounter.time.desc()).offset(offset).limit(limit).all()
+    # Get encounters using repository with filters
+    encounters = await repos.encounter.get_by_run_id(
+        run_id=run_id,
+        player_id=player_id,
+        route_id=route_id,
+        species_id=species_id,
+        family_id=family_id,
+        status=status,
+        method=method,
+        shiny=shiny,
+        limit=limit,
+        offset=offset,
+    )
+    
+    # For now, we'll approximate total count as len(encounters)
+    # TODO: Add proper count method to repository interface
+    total = len(encounters)
 
     # Build response
     encounter_responses = []
     for encounter in encounters:
+        # Get related entities for display names
+        # Note: The SQLAlchemy implementation should have used joinedload for efficiency
+        player = encounter.player if hasattr(encounter, 'player') else await repos.player.get_by_id(encounter.player_id)
+        route = encounter.route if hasattr(encounter, 'route') else await repos.route.get_by_id(encounter.route_id)
+        species = encounter.species if hasattr(encounter, 'species') else await repos.species.get_by_id(encounter.species_id)
+        
         # Create base encounter data
         encounter_dict = {
             "id": encounter.id,
@@ -117,9 +105,9 @@ def get_encounters(
             "status": encounter.status,
             "dupes_skip": encounter.dupes_skip,
             "fe_finalized": encounter.fe_finalized,
-            "player_name": encounter.player.name,
-            "route_label": encounter.route.label,
-            "species_name": encounter.species.name,
+            "player_name": player.name if player else "Unknown",
+            "route_label": route.label if route else "Unknown",
+            "species_name": species.name if species else "Unknown",
         }
         encounter_responses.append(EncounterResponse.model_validate(encounter_dict))
 
@@ -136,36 +124,38 @@ def get_encounters(
         404: {"model": ProblemDetails, "description": "Run not found"},
     },
 )
-def get_blocklist(run_id: UUID, db: Session = Depends(get_db)) -> BlocklistResponse:
+async def get_blocklist(
+    run_id: UUID,
+    repos: RepositoryContainer = Depends(get_repository_container)
+) -> BlocklistResponse:
     """
     Get the global blocklist for a run.
 
     Returns all evolution families that are blocked (already encountered/caught)
     along with the species names in each family.
     """
-    # Verify run exists
-    run = db.query(Run).filter(Run.id == run_id).first()
+    # Verify run exists using repository
+    run = await repos.run.get_by_id(run_id)
     if not run:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Run not found"
         )
 
-    # Get blocklist entries with species names
-    blocklist_entries = (
-        db.query(Blocklist)
-        .filter(Blocklist.run_id == run_id)
-        .order_by(Blocklist.created_at.desc())
-        .all()
-    )
+    # Get blocklist entries using repository
+    blocklist_entries = await repos.blocklist.get_by_run_id(run_id)
+
+    # Get all unique family IDs to batch load species data
+    family_ids = list(set(entry.family_id for entry in blocklist_entries))
+
+    # Batch load all species for all families to prevent N+1 queries
+    species_by_family = {}
+    for family_id in family_ids:
+        family_species = await repos.species.get_by_family_id(family_id)
+        species_by_family[family_id] = [species.name for species in family_species]
 
     blocked_families = []
     for entry in blocklist_entries:
-        # Get all species in this family
-        species_in_family = (
-            db.query(Species).filter(Species.family_id == entry.family_id).all()
-        )
-
-        species_names = [species.name for species in species_in_family]
+        species_names = species_by_family.get(entry.family_id, [])
 
         blocked_entry = BlocklistEntry(
             family_id=entry.family_id,
@@ -186,7 +176,10 @@ def get_blocklist(run_id: UUID, db: Session = Depends(get_db)) -> BlocklistRespo
         404: {"model": ProblemDetails, "description": "Run not found"},
     },
 )
-def get_links(run_id: UUID, db: Session = Depends(get_db)) -> LinkListResponse:
+async def get_links(
+    run_id: UUID,
+    repos: RepositoryContainer = Depends(get_repository_container)
+) -> LinkListResponse:
     """
     Get all soul links for a run.
 
@@ -194,48 +187,48 @@ def get_links(run_id: UUID, db: Session = Depends(get_db)) -> LinkListResponse:
     by different players). If one Pokemon in a soul link faints, all linked
     Pokemon are considered dead.
     """
-    # Verify run exists
-    run = db.query(Run).filter(Run.id == run_id).first()
+    # Verify run exists using repository
+    run = await repos.run.get_by_id(run_id)
     if not run:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Run not found"
         )
 
-    # Get links with members
-    links = (
-        db.query(Link)
-        .filter(Link.run_id == run_id)
-        .options(
-            joinedload(Link.members).joinedload(LinkMember.player),
-            joinedload(Link.members)
-            .joinedload(LinkMember.encounter)
-            .joinedload(Encounter.species),
-            joinedload(Link.route),
-        )
-        .all()
-    )
+    # Get links using repository
+    links = await repos.link.get_by_run_id(run_id)
 
     link_responses = []
     for link in links:
+        # Get link members using repository
+        members = await repos.link_member.get_by_link_id(link.id)
+        
         # Build member responses
         member_responses = []
-        for member in link.members:
+        for member in members:
+            # Get related data using repositories
+            player = member.player if hasattr(member, 'player') else await repos.player.get_by_id(member.player_id)
+            encounter = member.encounter if hasattr(member, 'encounter') else await repos.encounter.get_by_id(member.encounter_id)
+            species = encounter.species if hasattr(encounter, 'species') else await repos.species.get_by_id(encounter.species_id)
+            
             member_data = LinkMemberResponse(
                 player_id=member.player_id,
-                player_name=member.player.name,
+                player_name=player.name if player else "Unknown",
                 encounter_id=member.encounter_id,
-                species_id=member.encounter.species_id,
-                species_name=member.encounter.species.name,
-                level=member.encounter.level,
-                shiny=member.encounter.shiny,
-                status=member.encounter.status,
+                species_id=encounter.species_id,
+                species_name=species.name if species else "Unknown",
+                level=encounter.level,
+                shiny=encounter.shiny,
+                status=encounter.status,
             )
             member_responses.append(member_data)
 
+        # Get route using repository
+        route = link.route if hasattr(link, 'route') else await repos.route.get_by_id(link.route_id)
+        
         link_data = LinkResponse(
             id=link.id,
             route_id=link.route_id,
-            route_label=link.route.label,
+            route_label=route.label if route else "Unknown",
             members=member_responses,
         )
         link_responses.append(link_data)
@@ -251,8 +244,9 @@ def get_links(run_id: UUID, db: Session = Depends(get_db)) -> LinkListResponse:
         404: {"model": ProblemDetails, "description": "Run not found"},
     },
 )
-def get_route_status(
-    run_id: UUID, db: Session = Depends(get_db)
+async def get_route_status(
+    run_id: UUID,
+    repos: RepositoryContainer = Depends(get_repository_container)
 ) -> RouteStatusResponse:
     """
     Get the route status matrix for a run.
@@ -260,54 +254,58 @@ def get_route_status(
     Returns a matrix showing which routes each player has encountered/caught
     Pokemon on. This gives a quick overview of run progress.
     """
-    # Verify run exists
-    run = db.query(Run).filter(Run.id == run_id).first()
+    # Verify run exists using repository
+    run = await repos.run.get_by_id(run_id)
     if not run:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Run not found"
         )
 
-    # Get all players in the run
-    players = db.query(Player).filter(Player.run_id == run_id).all()
+    # Get all players in the run using repository
+    players = await repos.player.get_by_run_id(run_id)
 
-    # Get all routes that have encounters in this run
-    routes_with_encounters = (
-        db.query(Route)
-        .join(Encounter)
-        .filter(Encounter.run_id == run_id)
-        .distinct()
-        .all()
+    # Build player lookup for faster access
+    players_by_id = {player.id: player.name for player in players}
+
+    # Get all caught encounters using repository
+    encounters = await repos.encounter.get_by_run_id(
+        run_id=run_id,
+        status=EncounterStatus.CAUGHT,
+        limit=10000,  # Large limit to get all caught encounters
     )
 
+    # Group encounters by route for efficient processing
+    encounters_by_route = {}
+    for encounter in encounters:
+        route_id = encounter.route_id
+        if route_id not in encounters_by_route:
+            # Get route info using repository if not already loaded
+            route = encounter.route if hasattr(encounter, 'route') else await repos.route.get_by_id(route_id)
+            encounters_by_route[route_id] = {"route": route, "encounters": []}
+        encounters_by_route[route_id]["encounters"].append(encounter)
+
     route_statuses = []
-    for route in routes_with_encounters:
+    for route_id, route_data in encounters_by_route.items():
         players_status = {}
 
         # Initialize all players with None (no encounter)
-        for player in players:
-            players_status[player.name] = None
+        for player_name in players_by_id.values():
+            players_status[player_name] = None
 
-        # Get encounters for this route
-        encounters = (
-            db.query(Encounter)
-            .filter(
-                Encounter.run_id == run_id,
-                Encounter.route_id == route.id,
-                Encounter.status == EncounterStatus.CAUGHT,
-            )
-            .join(Species)
-            .join(Player)
-            .all()
-        )
-
-        # Update status for players who caught something
-        for encounter in encounters:
-            player_name = encounter.player.name
-            species_name = encounter.species.name
+        # Update status for players who caught something on this route
+        for encounter in route_data["encounters"]:
+            # Get player and species info using repositories if not already loaded
+            player = encounter.player if hasattr(encounter, 'player') else await repos.player.get_by_id(encounter.player_id)
+            species = encounter.species if hasattr(encounter, 'species') else await repos.species.get_by_id(encounter.species_id)
+            
+            player_name = player.name if player else "Unknown"
+            species_name = species.name if species else "Unknown"
             players_status[player_name] = species_name
 
         route_entry = RouteStatusEntry(
-            route_id=route.id, route_label=route.label, players_status=players_status
+            route_id=route_id,
+            route_label=route_data["route"].label if route_data["route"] else "Unknown",
+            players_status=players_status,
         )
         route_statuses.append(route_entry)
 

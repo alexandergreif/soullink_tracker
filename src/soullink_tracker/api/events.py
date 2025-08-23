@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from ..db.database import get_db
 from ..db.models import Run, Player, Species, IdempotencyKey, Encounter
@@ -148,59 +149,11 @@ async def process_event(
             detail="Player does not belong to this run",
         )
 
-    # Check idempotency
+    # Process event atomically with idempotency protection
     idempotency_key = request.headers.get("idempotency-key")
     request_data = event.model_dump(mode="json")
 
-    if idempotency_key:
-        cached_response = _check_idempotency(
-            db, idempotency_key, event.run_id, event.player_id, request_data
-        )
-        if cached_response:
-            return EventResponse(**cached_response)
-
-    # v3-only event processing
-    applied_rules: list[str] = []
-
-    try:
-        # Process using v3 event store (only supported architecture)
-        event_id, sequence_number = await _process_event_v3(db, event, applied_rules)
-
-        # Prepare response
-        response_data: dict = {
-            "message": "Event processed successfully",
-            "event_id": str(event_id) if event_id else None,
-            "applied_rules": applied_rules,
-        }
-
-        # Add sequence number for encounter events
-        if event.type == "encounter" and sequence_number is not None:
-            response_data["seq"] = sequence_number
-
-        # Store idempotency record
-        if idempotency_key:
-            _store_idempotency(
-                db,
-                idempotency_key,
-                event.run_id,
-                event.player_id,
-                request_data,
-                response_data,
-            )
-
-        db.commit()
-        return EventResponse(**response_data)
-
-    except Exception as e:
-        db.rollback()
-        # Wrap any unexpected exceptions
-        if not isinstance(e, ProblemDetailsException):
-            raise ProblemDetailsException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                title="Processing Error",
-                detail=f"An error occurred while processing the event: {str(e)}",
-            )
-        raise
+    return await _process_event_atomic(db, event, idempotency_key, request_data)
 
 
 @router.get(
@@ -306,6 +259,7 @@ def get_events_catchup(
             title="Internal Server Error",
             detail=f"Unexpected error retrieving events: {e}",
         )
+
 
 # Legacy v2 processing functions removed in v3-only architecture
 
@@ -538,3 +492,136 @@ def _convert_to_domain_event(
         )
     else:
         raise ValueError(f"Unknown event type: {event.type}")
+
+
+async def _process_event_atomic(
+    db: Session,
+    event: Union[EventEncounter, EventCatchResult, EventFaint],
+    idempotency_key: str,
+    request_data: dict,
+) -> EventResponse:
+    """Process event atomically with idempotency protection using database constraints.
+
+    This implementation prevents race conditions by:
+    1. Using a database transaction to make idempotency check and event processing atomic
+    2. Leveraging database unique constraints on idempotency keys
+    3. Handling constraint violations to detect duplicate processing attempts
+    """
+    if not idempotency_key:
+        raise ProblemDetailsException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Missing Idempotency Key",
+            detail="Idempotency-Key header is required for event processing",
+        )
+
+    request_hash = hashlib.sha256(
+        json.dumps(request_data, sort_keys=True).encode()
+    ).hexdigest()
+
+    try:
+        # Check if transaction is already started
+        if not db.in_transaction():
+            db.begin()
+
+        # First, try to create the idempotency record immediately
+        # This acts as a lock and prevents duplicate processing
+        idempotency_record = IdempotencyKey(
+            key=idempotency_key,
+            run_id=event.run_id,
+            player_id=event.player_id,
+            request_hash=request_hash,
+            response_json={},  # Will be updated after successful processing
+            created_at=datetime.now(timezone.utc),
+        )
+
+        db.add(idempotency_record)
+
+        try:
+            # Flush to trigger constraint check without committing
+            db.flush()
+        except IntegrityError:
+            # Constraint violation means this request was already processed
+            db.rollback()
+
+            # Retrieve the existing response
+            existing = (
+                db.query(IdempotencyKey)
+                .filter(
+                    IdempotencyKey.key == idempotency_key,
+                    IdempotencyKey.run_id == event.run_id,
+                    IdempotencyKey.player_id == event.player_id,
+                    IdempotencyKey.request_hash == request_hash,
+                )
+                .first()
+            )
+
+            if existing and existing.response_json:
+                return EventResponse(**existing.response_json)
+            else:
+                # Edge case: record exists but no response stored yet
+                # This could happen if another thread is still processing
+                raise ProblemDetailsException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    title="Request In Progress",
+                    detail="This request is currently being processed by another thread",
+                )
+
+        # If we reach here, the idempotency record was successfully created
+        # Now process the event
+        applied_rules: list[str] = []
+
+        try:
+            # Process using v3 event store (only supported architecture)
+            event_id, sequence_number = await _process_event_v3(
+                db, event, applied_rules
+            )
+
+            # Prepare response
+            response_data: dict = {
+                "message": "Event processed successfully",
+                "event_id": str(event_id) if event_id else None,
+                "applied_rules": applied_rules,
+            }
+
+            # Add sequence number for encounter events
+            if event.type == "encounter" and sequence_number is not None:
+                response_data["seq"] = sequence_number
+
+            # Update the idempotency record with the successful response
+            idempotency_record.response_json = response_data
+
+            # Commit the entire transaction atomically
+            db.commit()
+            return EventResponse(**response_data)
+
+        except Exception as e:
+            # Event processing failed, rollback everything including idempotency record
+            db.rollback()
+
+            # Re-raise the exception (it should already be a ProblemDetailsException)
+            if not isinstance(e, ProblemDetailsException):
+                raise ProblemDetailsException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    title="Processing Error",
+                    detail=f"An error occurred while processing the event: {str(e)}",
+                )
+            raise
+
+    except IntegrityError:
+        # This shouldn't happen since we handle it above, but just in case
+        db.rollback()
+        raise ProblemDetailsException(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Duplicate Request",
+            detail="This request has already been processed",
+        )
+    except Exception as e:
+        # Unexpected error, rollback and re-raise
+        db.rollback()
+        if not isinstance(e, ProblemDetailsException):
+            raise ProblemDetailsException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                title="Internal Server Error",
+                detail=f"Unexpected error during atomic processing: {str(e)}",
+            )
+        raise

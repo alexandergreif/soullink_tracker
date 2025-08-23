@@ -26,8 +26,9 @@ class TestWebSocketBroadcasting:
         player = sample_player
         token = player._test_token
 
+        # Use legacy endpoint for backwards compatibility during transition
         with auth_client.websocket_connect(
-            f"/v1/ws?run_id={run.id}&token={token}"
+            f"/v1/ws/legacy?run_id={run.id}&token={token}"
         ) as websocket:
 
             # Skip welcome message
@@ -145,8 +146,9 @@ class TestWebSocketSequenceTracking:
         player = sample_player
         token = player._test_token
 
+        # Use legacy endpoint for backwards compatibility during transition
         with auth_client.websocket_connect(
-            f"/v1/ws?run_id={run.id}&token={token}"
+            f"/v1/ws/legacy?run_id={run.id}&token={token}"
         ) as websocket:
 
             # Skip welcome message
@@ -199,7 +201,7 @@ class TestWebSocketAuthentication:
 
         # Act & Assert: Try to connect without token (should fail)
         try:
-            with client.websocket_connect(f"/v1/ws?run_id={run_id}") as websocket:
+            with client.websocket_connect(f"/v1/ws/legacy?run_id={run_id}") as websocket:
                 # Should not reach here
                 assert False, "WebSocket should have rejected unauthenticated connection"
         except Exception:
@@ -217,7 +219,7 @@ class TestWebSocketAuthentication:
 
         # Act & Assert: Should connect successfully
         with auth_client.websocket_connect(
-            f"/v1/ws?run_id={run.id}&token={token}"
+            f"/v1/ws/legacy?run_id={run.id}&token={token}"
         ) as websocket:
             # Should successfully establish connection
             # WebSocket should send welcome message
@@ -242,7 +244,7 @@ class TestWebSocketErrorHandling:
 
         # Connect both players using separate websocket connections
         with auth_client.websocket_connect(
-            f"/v1/ws?run_id={run.id}&token={token1}"
+            f"/v1/ws/legacy?run_id={run.id}&token={token1}"
         ) as ws1:
             
             # Skip welcome message for ws1
@@ -250,7 +252,7 @@ class TestWebSocketErrorHandling:
             
             # Connect and immediately disconnect ws2 to simulate failure
             with auth_client.websocket_connect(
-                f"/v1/ws?run_id={run.id}&token={token2}"
+                f"/v1/ws/legacy?run_id={run.id}&token={token2}"
             ) as ws2:
                 # Skip welcome message and force close
                 ws2.receive_json()

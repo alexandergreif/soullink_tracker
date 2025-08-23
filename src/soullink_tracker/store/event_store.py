@@ -133,12 +133,12 @@ class EventStore:
     ) -> List[EventEnvelope]:
         """
         Convenience method to get events of a specific type.
-        
+
         Args:
             run_id: Run ID to filter by
             event_type: Specific event type to filter for
             limit: Maximum number of events to return
-            
+
         Returns:
             List of event envelopes for the specified type
         """
@@ -171,9 +171,7 @@ class EventStore:
             # Deserialize and wrap in envelope
             event = self._deserialize_event(record)
             return EventEnvelope(
-                sequence_number=record.seq,
-                stored_at=record.created_at,
-                event=event
+                sequence_number=record.seq, stored_at=record.created_at, event=event
             )
 
         except SQLAlchemyError as e:

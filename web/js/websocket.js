@@ -301,6 +301,7 @@ class SoulLinkWebSocket {
         // Don't build URL immediately - wait for connection attempt
         this.wsUrl = null;
         this.authError = null;
+        this.authToken = null;  // Store auth token for message-based auth
         
         this.client = new WebSocketClient('', {
             debug: true,
@@ -319,21 +320,41 @@ class SoulLinkWebSocket {
     }
     
     /**
-     * Build WebSocket URL from API URL
+     * Build WebSocket URL from API URL (without token in query params)
      * @returns {string} WebSocket URL
      */
     buildWebSocketUrl() {
         const url = new URL(this.apiUrl);
         const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
         
-        // Get session token from localStorage with improved error handling
+        // Validate token exists but don't include in URL for security
         const sessionToken = this.retrieveBearerToken();
         if (!sessionToken) {
             console.error('No valid session token found. WebSocket connection will fail.');
             throw new Error('Authentication token required for WebSocket connection');
         }
         
-        return `${wsProtocol}//${url.host}/v1/ws?run_id=${this.runId}&token=${encodeURIComponent(sessionToken)}`;
+        // Store token for message-based authentication
+        this.authToken = sessionToken;
+        
+        return `${wsProtocol}//${url.host}/v1/ws?run_id=${this.runId}`;
+    }
+    
+    /**
+     * Build legacy WebSocket URL with token in query params (deprecated)
+     * @returns {string} Legacy WebSocket URL
+     */
+    buildLegacyWebSocketUrl() {
+        const url = new URL(this.apiUrl);
+        const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        
+        const sessionToken = this.retrieveBearerToken();
+        if (!sessionToken) {
+            console.error('No valid session token found. WebSocket connection will fail.');
+            throw new Error('Authentication token required for WebSocket connection');
+        }
+        
+        return `${wsProtocol}//${url.host}/v1/ws/legacy?run_id=${this.runId}&token=${encodeURIComponent(sessionToken)}`;
     }
     
     /**
@@ -389,8 +410,19 @@ class SoulLinkWebSocket {
     setupEventHandlers() {
         // Connection events
         this.client.on('connected', () => {
-            console.log('Connected to SoulLink WebSocket');
-            this.updateConnectionStatus(true);
+            console.log('Connected to SoulLink WebSocket, sending authentication...');
+            this.updateConnectionStatus(false, 'Authenticating...');
+            
+            // Send authentication message immediately after connection
+            if (this.authToken) {
+                this.client.send({
+                    type: 'auth',
+                    token: this.authToken
+                });
+            } else {
+                console.error('No auth token available for WebSocket authentication');
+                this.updateConnectionStatus(false, 'No Auth Token');
+            }
         });
         
         this.client.on('disconnected', () => {
@@ -416,6 +448,34 @@ class SoulLinkWebSocket {
             } else {
                 Utils.showError('Connection error occurred');
             }
+        });
+        
+        // Authentication flow handlers
+        this.client.on('auth_required', (data) => {
+            console.log('Server requested authentication:', data.data.message);
+            // Authentication message should already be sent on connection
+        });
+        
+        this.client.on('auth_success', (data) => {
+            console.log('WebSocket authentication successful:', data.data);
+            this.updateConnectionStatus(true, 'Connected & Authenticated');
+        });
+        
+        this.client.on('auth_failed', (data) => {
+            console.error('WebSocket authentication failed:', data.data.reason);
+            this.updateConnectionStatus(false, 'Authentication Failed');
+            Utils.showError(`Authentication failed: ${data.data.reason}`);
+        });
+        
+        this.client.on('auth_timeout', (data) => {
+            console.error('WebSocket authentication timeout:', data.data.reason);
+            this.updateConnectionStatus(false, 'Authentication Timeout');
+            Utils.showError('Authentication timeout. Please refresh and try again.');
+        });
+        
+        this.client.on('connection_established', (data) => {
+            console.log('WebSocket connection fully established:', data.data);
+            this.updateConnectionStatus(true, 'Connected');
         });
         
         // SoulLink-specific events
@@ -446,14 +506,14 @@ class SoulLinkWebSocket {
     }
     
     /**
-     * Connect to WebSocket
+     * Connect to WebSocket with message-based authentication
      */
     connect() {
         // Build WebSocket URL at connection time to ensure Utils is available
         if (!this.wsUrl) {
             try {
                 this.wsUrl = this.buildWebSocketUrl();
-                console.log('WebSocket URL built successfully:', this.wsUrl);
+                console.log('WebSocket URL built successfully (message-based auth):', this.wsUrl);
             } catch (error) {
                 console.error('Failed to build WebSocket URL:', error.message);
                 this.authError = error.message;
@@ -477,6 +537,31 @@ class SoulLinkWebSocket {
         }
         
         this.client.connect();
+    }
+    
+    /**
+     * Connect to WebSocket using legacy query-parameter authentication
+     */
+    connectLegacy() {
+        console.warn('Using legacy WebSocket authentication (deprecated)');
+        
+        try {
+            const legacyUrl = this.buildLegacyWebSocketUrl();
+            console.log('Legacy WebSocket URL built:', legacyUrl);
+            
+            // Create a separate client for legacy connection
+            this.client.url = legacyUrl;
+            this.client.connect();
+            
+        } catch (error) {
+            console.error('Failed to build legacy WebSocket URL:', error.message);
+            this.authError = error.message;
+            this.updateConnectionStatus(false, 'Authentication Error');
+            
+            if (typeof Utils !== 'undefined' && Utils.showError) {
+                Utils.showError('Please log in to enable real-time updates.');
+            }
+        }
     }
     
     /**

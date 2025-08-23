@@ -107,7 +107,7 @@ def get_players_in_run(
         raise ProblemDetailsException(
             status_code=status.HTTP_404_NOT_FOUND,
             title="Run not found",
-            detail="The specified run does not exist"
+            detail="The specified run does not exist",
         )
 
     # Get players

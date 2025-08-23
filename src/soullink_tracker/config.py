@@ -10,9 +10,85 @@ import os
 import platform
 import secrets
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from dataclasses import dataclass, asdict
 import logging
+import sys
+
+if TYPE_CHECKING:
+    from .auth.rate_limiter import RateLimitConfig
+
+# List of known weak/default JWT secrets that should be rejected
+WEAK_JWT_SECRETS = {
+    "your-secret-key-change-in-production",
+    "secret",
+    "key",
+    "password",
+    "jwt-secret",
+    "secret-key",
+    "change-me",
+    "default",
+    "test",
+    "development",
+    "dev",
+    "demo",
+    "example",
+    "sample",
+}
+
+
+def _validate_jwt_secret_key(jwt_secret_key: str) -> None:
+    """Validate JWT secret key security and reject weak/default keys.
+
+    Args:
+        jwt_secret_key: The JWT secret key to validate
+
+    Raises:
+        SystemExit: If the secret key is weak, default, or insecure
+    """
+    if not jwt_secret_key:
+        logging.critical(
+            "JWT secret key is empty - this is a critical security vulnerability"
+        )
+        sys.exit(1)
+
+    if len(jwt_secret_key) < 32:
+        logging.critical(
+            f"JWT secret key is too short ({len(jwt_secret_key)} chars). "
+            f"Minimum 32 characters required for security."
+        )
+        sys.exit(1)
+
+    if jwt_secret_key.lower() in WEAK_JWT_SECRETS:
+        logging.critical(
+            f"JWT secret key '{jwt_secret_key}' is a known weak/default secret. "
+            f"This allows attackers to forge tokens across installations. "
+            f"Set SOULLINK_JWT_SECRET_KEY environment variable with a secure key."
+        )
+        sys.exit(1)
+
+    # Additional entropy check - ensure it's not just repeated characters
+    unique_chars = len(set(jwt_secret_key))
+    if unique_chars < 8:
+        logging.critical(
+            f"JWT secret key has insufficient entropy ({unique_chars} unique characters). "
+            f"Use a cryptographically secure random key."
+        )
+        sys.exit(1)
+
+    # Check for common patterns that suggest a weak key
+    if any(
+        pattern in jwt_secret_key.lower()
+        for pattern in ["123", "abc", "password", "secret", "key", "qwerty", "admin"]
+    ):
+        logging.warning(
+            "JWT secret key contains common patterns that may indicate weak security. "
+            "Consider using a fully random key generated with secrets.token_urlsafe(64)."
+        )
+
+    logging.debug(
+        f"JWT secret key validation passed ({len(jwt_secret_key)} chars, {unique_chars} unique)"
+    )
 
 
 @dataclass
@@ -22,6 +98,7 @@ class DatabaseConfig:
     url: str = "sqlite:///soullink_tracker.db"
     echo: bool = False
     pool_pre_ping: bool = True
+    log_queries: bool = False  # Enable query logging for performance analysis
 
 
 @dataclass
@@ -55,17 +132,33 @@ class AppConfig:
     enable_cors: bool = True
 
     # Event Store Configuration (v3-only)
-    feature_v3_eventstore: bool = True  # v3 event sourcing is the only supported architecture
+    feature_v3_eventstore: bool = (
+        True  # v3 event sourcing is the only supported architecture
+    )
 
     # Security Configuration
     session_ttl_days: int = 30  # Session token TTL in days
     password_hash_iterations: int = 120_000  # PBKDF2 iterations
     auth_allow_legacy_bearer: bool = True  # Allow legacy bearer token auth
-    
-    # JWT Configuration
-    jwt_secret_key: str = "your-secret-key-change-in-production"  # Will be auto-generated
+
+    # JWT Configuration - secret key will be auto-generated or from environment
+    jwt_secret_key: str = ""  # Must be set at runtime - no default for security
     jwt_access_token_expires_minutes: int = 15  # Access token TTL
     jwt_refresh_token_expires_days: int = 30  # Refresh token TTL
+
+    # Rate Limiting Configuration
+    enable_global_rate_limiting: bool = True  # Enable global rate limiting middleware
+    rate_limit_auth_requests: int = 10  # Auth endpoints: max requests per minute
+    rate_limit_api_requests: int = 60  # API endpoints: max requests per minute
+    rate_limit_websocket_requests: int = 120  # WebSocket: max requests per minute
+    rate_limit_window_seconds: int = 60  # Rate limit window duration
+    rate_limit_failure_penalty_minutes: int = 15  # Block duration after auth failures
+    rate_limit_max_failures: int = 5  # Max auth failures before blocking
+    rate_limit_enable_user_limits: bool = True  # Enable per-user rate limiting
+    rate_limit_enable_ip_bypass: bool = True  # Enable localhost bypass
+    rate_limit_admin_bypass_ips: Optional[List[str]] = (
+        None  # Admin IPs that bypass limits
+    )
 
     # Logging
     log_level: str = "INFO"
@@ -130,7 +223,9 @@ class ConfigManager:
         env_info["debug"] = bool(os.getenv("SOULLINK_DEBUG", "0") == "1")
 
         # v3 Event Store (always enabled, ignores env vars)
-        env_info["feature_v3_eventstore"] = True  # v3 is the only supported architecture
+        env_info["feature_v3_eventstore"] = (
+            True  # v3 is the only supported architecture
+        )
 
         return env_info
 
@@ -156,9 +251,20 @@ class ConfigManager:
         # Check for database URL override
         db_url = os.getenv("SOULLINK_DATABASE_URL") or DatabaseConfig().url
 
-        # Generate secure JWT secret key
-        jwt_secret_key = secrets.token_urlsafe(64)  # 512-bit key
-        
+        # Generate or get JWT secret key from environment
+        jwt_secret_key = os.getenv("SOULLINK_JWT_SECRET_KEY")
+        if not jwt_secret_key:
+            # Generate cryptographically secure 64-byte secret
+            jwt_secret_key = secrets.token_urlsafe(64)  # 512-bit key
+            logging.info("Generated new JWT secret key (not from environment)")
+        else:
+            logging.info(
+                "Using JWT secret key from SOULLINK_JWT_SECRET_KEY environment variable"
+            )
+
+        # Validate JWT secret key security
+        _validate_jwt_secret_key(jwt_secret_key)
+
         # Create default configuration
         config = SoulLinkConfig(
             app=AppConfig(
@@ -323,20 +429,20 @@ class ConfigManager:
         """Validate configuration and return list of warnings/errors."""
         if self.config is None:
             self.load_config()
-        
+
         issues = []
-        
+
         # Check critical directories exist
         if self.config.app.web_dir:
             web_path = Path(self.config.app.web_dir)
             if not web_path.exists():
                 issues.append(f"Web directory not found: {web_path}")
-        
+
         if self.config.app.data_dir:
             data_path = Path(self.config.app.data_dir)
             if not data_path.exists():
                 issues.append(f"Data directory not found: {data_path}")
-        
+
         # Check database file is writable
         db_url = self.config.database.url
         if db_url.startswith("sqlite:///"):
@@ -349,19 +455,70 @@ class ConfigManager:
                     issues.append(f"Cannot create database directory: {e}")
             elif not os.access(db_dir, os.W_OK):
                 issues.append(f"Database directory is not writable: {db_dir}")
-        
+
         # Windows-specific checks
         if platform.system() == "Windows":
             # Check for common Windows path issues
-            for path_str in [self.config.app.web_dir, self.config.app.data_dir, self.config.app.lua_dir]:
+            for path_str in [
+                self.config.app.web_dir,
+                self.config.app.data_dir,
+                self.config.app.lua_dir,
+            ]:
                 if path_str and "\\" in path_str and "/" in path_str:
                     issues.append(f"Mixed path separators detected: {path_str}")
-        
+
         return issues
+
+    def validate_security_config(self) -> None:
+        """Validate security-critical configuration at startup.
+
+        Raises:
+            SystemExit: If critical security issues are found
+        """
+        if self.config is None:
+            self.load_config()
+
+        # Validate JWT secret key
+        _validate_jwt_secret_key(self.config.app.jwt_secret_key)
+
+        # Additional security validations can be added here
+        logging.info("Security configuration validation passed")
 
 
 # Global config manager instance
 config_manager = ConfigManager()
+
+
+def get_rate_limit_config() -> "RateLimitConfig":
+    """Create a RateLimitConfig from the current app configuration."""
+    from .auth.rate_limiter import RateLimitConfig, RateLimitTier
+
+    app_config = get_config().app
+
+    return RateLimitConfig(
+        auth_strict=RateLimitTier(
+            max_requests=app_config.rate_limit_auth_requests,
+            window_seconds=app_config.rate_limit_window_seconds,
+            description="Authentication endpoints",
+        ),
+        api_moderate=RateLimitTier(
+            max_requests=app_config.rate_limit_api_requests,
+            window_seconds=app_config.rate_limit_window_seconds,
+            description="API endpoints",
+        ),
+        websocket_lenient=RateLimitTier(
+            max_requests=app_config.rate_limit_websocket_requests,
+            window_seconds=app_config.rate_limit_window_seconds,
+            description="WebSocket connections",
+        ),
+        failure_penalty_minutes=app_config.rate_limit_failure_penalty_minutes,
+        max_failures_before_block=app_config.rate_limit_max_failures,
+        enable_user_limits=app_config.rate_limit_enable_user_limits,
+        enable_ip_bypass=app_config.rate_limit_enable_ip_bypass,
+        admin_bypass_ips=set(
+            app_config.rate_limit_admin_bypass_ips or ["127.0.0.1", "::1"]
+        ),
+    )
 
 
 def get_config() -> SoulLinkConfig:
@@ -397,3 +554,23 @@ def is_portable_mode() -> bool:
 def is_development_mode() -> bool:
     """Check if running in development mode."""
     return config_manager.is_development_mode()
+
+
+def validate_startup_security() -> None:
+    """Validate security configuration at application startup.
+
+    This function should be called early in the application startup process
+    to ensure critical security settings are properly configured.
+
+    Raises:
+        SystemExit: If critical security vulnerabilities are detected
+    """
+    try:
+        config_manager.validate_security_config()
+        logging.info("Startup security validation completed successfully")
+    except SystemExit:
+        # Re-raise system exit (security validation failure)
+        raise
+    except Exception as e:
+        logging.critical(f"Unexpected error during security validation: {e}")
+        sys.exit(1)

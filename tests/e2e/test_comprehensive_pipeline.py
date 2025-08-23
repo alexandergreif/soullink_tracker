@@ -286,7 +286,7 @@ class TestComprehensivePipeline:
         
         # Process events and measure latency
         with client.websocket_connect(
-            f"/v1/ws?run_id={sample_run.id}&token={sample_player._test_token}"
+            f"/v1/ws/legacy?run_id={sample_run.id}&token={sample_player._test_token}"
         ) as websocket:
             # Skip welcome message
             websocket.receive_json()
@@ -485,7 +485,7 @@ class TestComprehensivePipeline:
         event_sequences = []
         
         with client.websocket_connect(
-            f"/v1/ws?run_id={sample_run.id}&token={sample_player._test_token}"
+            f"/v1/ws/legacy?run_id={sample_run.id}&token={sample_player._test_token}"
         ) as websocket:
             # Skip welcome
             websocket.receive_json()
@@ -577,7 +577,7 @@ class TestPerformanceBenchmarks:
         latencies = []
         
         with client.websocket_connect(
-            f"/v1/ws?run_id={sample_run.id}&token={sample_player._test_token}"
+            f"/v1/ws/legacy?run_id={sample_run.id}&token={sample_player._test_token}"
         ) as websocket:
             websocket.receive_json()  # Welcome
             
@@ -647,7 +647,7 @@ class TestPerformanceBenchmarks:
             errors = 0
             
             with client.websocket_connect(
-                f"/v1/ws?run_id={sample_run.id}&token={player._test_token}"
+                f"/v1/ws/legacy?run_id={sample_run.id}&token={player._test_token}"
             ) as websocket:
                 websocket.receive_json()  # Welcome
                 

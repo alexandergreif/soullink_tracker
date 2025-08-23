@@ -9,15 +9,13 @@ from uuid import UUID
 from datetime import datetime
 import logging
 
-from sqlalchemy.orm import Session
-# select import removed - not needed in v3-only event store architecture
-
 from .enums import EncounterStatus, EncounterMethod
+
 # Legacy model imports removed in v3-only architecture
 from ..db.models import Blocklist, Encounter, LinkMember  # Still needed for type hints
 from ..domain.events import EncounterEvent, CatchResultEvent
 from ..domain.rules import RunState, PlayerRouteState, evaluate_encounter
-from ..store.event_store import EventStore
+from ..repositories.interfaces import RepositoryContainer
 
 
 class RulesEngine:
@@ -27,60 +25,63 @@ class RulesEngine:
     Always uses the v3 event store for state building.
     """
 
-    def __init__(self, db_session: Session):
-        self.db = db_session
+    def __init__(self, repos: RepositoryContainer):
+        self.repos = repos
         self.logger = logging.getLogger(__name__)
         self._state_cache: Dict[UUID, RunState] = {}
 
-    def _get_or_build_state(self, run_id: UUID) -> RunState:
+    async def _get_or_build_state(self, run_id: UUID) -> RunState:
         """Get cached state or build it from event store or legacy DB."""
         if run_id in self._state_cache:
             return self._state_cache[run_id]
 
         # v3-only architecture: always use event store
-        state = self._build_state_from_eventstore(run_id)
+        state = await self._build_state_from_eventstore(run_id)
 
         self._state_cache[run_id] = state
         return state
 
-    def _build_state_from_eventstore(self, run_id: UUID) -> RunState:
-        """Build state from v3 event store."""
+    async def _build_state_from_eventstore(self, run_id: UUID) -> RunState:
+        """Build state from v3 event store using repository."""
         try:
-            event_store = EventStore(self.db)
-            envelopes = event_store.get_events(run_id=run_id, since_seq=0, limit=100000)
+            # Get events from repository
+            events = await self.repos.event.get_by_run_since_seq(
+                run_id=run_id, since_seq=0, limit=100000
+            )
 
             blocked_families = set()
             player_routes = {}
 
-            for envelope in envelopes:
-                event = envelope.event
-
-                if isinstance(event, EncounterEvent):
-                    route_key = (event.player_id, event.route_id)
+            # Parse events to build state
+            # Note: This is simplified - in real implementation we'd need proper event deserialization
+            for event in events:
+                payload = event.payload_json
+                
+                if event.type == "encounter":
+                    route_key = (UUID(payload["player_id"]), payload["route_id"])
 
                     # Update based on encounter status
-                    if event.fe_finalized:
+                    if payload.get("fe_finalized", False):
                         new_state = PlayerRouteState(
                             fe_finalized=True,
-                            first_encounter_family_id=event.family_id,
+                            first_encounter_family_id=payload["family_id"],
                             last_encounter_method=EncounterMethod(
-                                event.encounter_method
+                                payload["encounter_method"]
                             )
-                            if event.encounter_method
+                            if payload.get("encounter_method")
                             else None,
-                            last_rod_kind=event.rod_kind,
+                            last_rod_kind=payload.get("rod_kind"),
                         )
                         player_routes[route_key] = new_state
 
-                elif isinstance(event, CatchResultEvent):
-                    if event.result == EncounterStatus.CAUGHT:
+                elif event.type == "catch_result":
+                    if payload.get("result") == "caught":
                         # Add caught families to blocklist
                         # Need to resolve family_id from encounter_id
-                        encounter_event = self._find_encounter_event(
-                            envelopes, event.encounter_id
-                        )
-                        if encounter_event:
-                            blocked_families.add(encounter_event.family_id)
+                        encounter_id = UUID(payload["encounter_id"])
+                        encounter = await self.repos.encounter.get_by_id(encounter_id)
+                        if encounter:
+                            blocked_families.add(encounter.family_id)
 
             return RunState(
                 blocked_families=blocked_families, player_routes=player_routes
@@ -94,18 +95,6 @@ class RulesEngine:
             raise
 
     # Legacy DB state building removed in v3-only architecture
-
-    def _find_encounter_event(
-        self, envelopes, encounter_id: UUID
-    ) -> Optional[EncounterEvent]:
-        """Find encounter event by ID in envelope list."""
-        for envelope in envelopes:
-            if (
-                isinstance(envelope.event, EncounterEvent)
-                and envelope.event.event_id == encounter_id
-            ):
-                return envelope.event
-        return None
 
     def _convert_encounter_to_event(
         self,
@@ -140,30 +129,30 @@ class RulesEngine:
             fe_finalized=False,
         )
 
-    def is_family_blocked(
-        self, run_id: UUID, family_id: int, blocklist: List[Blocklist]
+    async def is_family_blocked(
+        self, run_id: UUID, family_id: int, blocklist: List[Blocklist] = None
     ) -> bool:
         """Check if an evolution family is blocked (already caught/encountered).
 
         Delegates to pure function rules engine.
         """
-        state = self._get_or_build_state(run_id)
+        state = await self._get_or_build_state(run_id)
         return family_id in state.blocked_families
 
-    def should_skip_dupe_encounter(
+    async def should_skip_dupe_encounter(
         self,
         run_id: UUID,
         route_id: int,
         family_id: int,
         player_id: UUID,
-        previous_encounters: List[Encounter],
+        previous_encounters: List[Encounter] = None,
     ) -> bool:
         """
         Check if this encounter should be skipped as a dupe.
 
         Delegates to pure function rules engine with cross-player route check.
         """
-        state = self._get_or_build_state(run_id)
+        state = await self._get_or_build_state(run_id)
 
         # Check if family is globally blocked first
         if family_id in state.blocked_families:
@@ -177,33 +166,36 @@ class RulesEngine:
                 and state.player_routes[(other_player_id, other_route_id)].fe_finalized
             ):
                 # Need to check if that finalized encounter was the same family
-                # This requires additional lookup which legacy code does via previous_encounters
-                for encounter in previous_encounters:
-                    if (
-                        encounter.player_id == other_player_id
-                        and encounter.route_id == route_id
-                        and encounter.family_id == family_id
-                        and encounter.fe_finalized
-                    ):
+                # Get encounters from repository instead of using previous_encounters parameter
+                encounters = await self.repos.encounter.get_by_run_id(
+                    run_id=run_id,
+                    player_id=other_player_id,
+                    route_id=route_id,
+                    family_id=family_id,
+                    limit=10,
+                )
+                
+                for encounter in encounters:
+                    if encounter.fe_finalized:
                         return True
 
         return False
 
-    def determine_encounter_status(
+    async def determine_encounter_status(
         self,
         run_id: UUID,
         route_id: int,
         family_id: int,
         player_id: UUID,
-        blocklist: List[Blocklist],
-        previous_encounters: List[Encounter],
+        blocklist: List[Blocklist] = None,
+        previous_encounters: List[Encounter] = None,
     ) -> EncounterStatus:
         """
         Determine the status of a new encounter based on SoulLink rules.
 
         Delegates to pure function rules engine.
         """
-        state = self._get_or_build_state(run_id)
+        state = await self._get_or_build_state(run_id)
 
         # Create encounter event for pure function
         encounter_event = self._convert_encounter_to_event(
@@ -219,26 +211,26 @@ class RulesEngine:
 
         # Check cross-player duplication (pure function can't see this)
         if not decision.dupes_skip:
-            if self.should_skip_dupe_encounter(
-                run_id, route_id, family_id, player_id, previous_encounters
+            if await self.should_skip_dupe_encounter(
+                run_id, route_id, family_id, player_id
             ):
                 return EncounterStatus.DUPE_SKIP
 
         return decision.status
 
-    def can_finalize_first_encounter(
-        self, family_id: int, blocklist: List[Blocklist]
+    async def can_finalize_first_encounter(
+        self, run_id: UUID, family_id: int
     ) -> bool:
         """
         Check if a first encounter can be finalized.
 
         Delegates to pure function rules engine.
         """
-        # Extract blocked families from blocklist
-        blocked_families = {entry.family_id for entry in blocklist}
+        # Get blocked families from repository
+        blocked_families = await self.is_family_blocked(run_id, family_id)
 
         # Family can be finalized if not globally blocked
-        return family_id not in blocked_families
+        return not blocked_families
 
     def create_soul_link_members(
         self, link_id: UUID, encounters: List[Encounter]

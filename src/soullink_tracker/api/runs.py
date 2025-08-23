@@ -3,10 +3,9 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
-from ..db.database import get_db
-from ..db.models import Run
+from ..repositories.dependencies import get_run_repository
+from ..repositories.interfaces import RunRepository
 from .schemas import RunCreate, RunResponse, RunListResponse, ProblemDetails
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
@@ -21,7 +20,10 @@ router = APIRouter(prefix="/v1/runs", tags=["runs"])
         422: {"model": ProblemDetails, "description": "Validation error"},
     },
 )
-def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunResponse:
+async def create_run(
+    run_data: RunCreate,
+    run_repo: RunRepository = Depends(get_run_repository)
+) -> RunResponse:
     """
     Create a new SoulLink run.
 
@@ -29,24 +31,21 @@ def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunRespons
     The rules_json field can contain custom game rules and configurations.
     The password will be hashed and stored securely if provided.
     """
-    # Hash the password if provided
-    password_salt = None
-    password_hash = None
+    # Hash the password if provided (kept for backwards compatibility)
+    # TODO: Move password hashing to repository layer or service layer
+    rules_json = run_data.rules_json.copy() if run_data.rules_json else {}
+    
     if run_data.password:
         from ..auth.security import hash_password
         password_salt, password_hash = hash_password(run_data.password)
-    
-    # Create new run
-    run = Run(
-        name=run_data.name,
-        rules_json=run_data.rules_json,
-        password_salt=password_salt,
-        password_hash=password_hash,
-    )
+        rules_json["_password_salt"] = password_salt
+        rules_json["_password_hash"] = password_hash
 
-    db.add(run)
-    db.commit()
-    db.refresh(run)
+    # Create new run using repository
+    run = await run_repo.create(
+        name=run_data.name,
+        rules_json=rules_json,
+    )
 
     return RunResponse.model_validate(run)
 
@@ -56,13 +55,15 @@ def create_run(run_data: RunCreate, db: Session = Depends(get_db)) -> RunRespons
     response_model=RunListResponse,
     responses={200: {"description": "List of runs retrieved successfully"}},
 )
-def list_runs(db: Session = Depends(get_db)) -> RunListResponse:
+async def list_runs(
+    run_repo: RunRepository = Depends(get_run_repository)
+) -> RunListResponse:
     """
     List all SoulLink runs.
 
     Returns a list of all runs in the system, ordered by creation date (newest first).
     """
-    runs = db.query(Run).order_by(Run.created_at.desc()).all()
+    runs = await run_repo.list_all()
 
     return RunListResponse(runs=[RunResponse.model_validate(run) for run in runs])
 
@@ -76,7 +77,10 @@ def list_runs(db: Session = Depends(get_db)) -> RunListResponse:
         422: {"model": ProblemDetails, "description": "Invalid run ID format"},
     },
 )
-def get_run(run_id: UUID, db: Session = Depends(get_db)) -> RunResponse:
+async def get_run(
+    run_id: UUID,
+    run_repo: RunRepository = Depends(get_run_repository)
+) -> RunResponse:
     """
     Get details of a specific SoulLink run.
 
@@ -84,7 +88,7 @@ def get_run(run_id: UUID, db: Session = Depends(get_db)) -> RunResponse:
     and rules. Does not include players or encounters - use separate endpoints
     for that data.
     """
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = await run_repo.get_by_id(run_id)
 
     if not run:
         raise HTTPException(

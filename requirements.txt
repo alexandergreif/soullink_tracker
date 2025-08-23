@@ -39,3 +39,9 @@ pytest-cov>=4.1.0
 pytest-playwright>=0.4.0
 hypothesis>=6.88.0
 httpx>=0.25.0  # For async test client
+
+# Development dependencies - Type stubs for mypy
+mypy>=1.7.0
+types-requests>=2.31.0
+types-Pillow>=10.0.0
+types-passlib>=1.7.0

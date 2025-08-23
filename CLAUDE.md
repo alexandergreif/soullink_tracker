@@ -191,7 +191,33 @@ data/              # CSV data files (routes, species)
 ### Authentication
 - Bearer token per player
 - Admin endpoints for token generation/rotation
-- Rate limiting: 10 req/s burst, 60 req/min sustained
+- Legacy rate limiting: Auth endpoints only
+
+### Global Rate Limiting Protection
+The application implements tiered global rate limiting to protect against DoS attacks and resource exhaustion:
+
+**Rate Limiting Tiers:**
+- **Auth Strict** (10 req/min): Authentication endpoints (`/auth/*`)
+- **API Moderate** (60 req/min): Main API endpoints (`/v1/*`)
+- **WebSocket Lenient** (120 req/min): WebSocket connections (`/v1/ws`)
+
+**Features:**
+- **Per-IP Limits**: Sliding window counters per client IP
+- **Per-User Limits**: Additional limits for authenticated users
+- **Admin Bypass**: Localhost IPs (127.0.0.1, ::1) bypass rate limits
+- **Auth Failure Blocking**: IP blocking after 5 failed auth attempts (15min penalty)
+- **Proper HTTP Responses**: 429 status with Retry-After headers
+
+**Configuration Options:**
+- `enable_global_rate_limiting`: Enable/disable global middleware (default: true)
+- `rate_limit_auth_requests`: Auth endpoints limit (default: 10/min)
+- `rate_limit_api_requests`: API endpoints limit (default: 60/min)
+- `rate_limit_websocket_requests`: WebSocket limit (default: 120/min)
+- `rate_limit_enable_user_limits`: Enable per-user tracking (default: true)
+- `rate_limit_enable_ip_bypass`: Enable admin IP bypass (default: true)
+
+**Excluded Endpoints:**
+Health checks, static files, and documentation endpoints are excluded from rate limiting.
 
 ### Key Endpoints
 - `POST /v1/events` - Single event ingestion (with Idempotency-Key)

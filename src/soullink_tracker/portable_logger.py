@@ -292,7 +292,7 @@ def setup_portable_logging(
     # Enable debug mode if requested
     if debug:
         os.environ["SOULLINK_DEBUG"] = "1"
-    
+
     # Use role-specific log directory if not provided
     if log_dir is None and role == "user":
         log_dir = Path.cwd() / "logs_user"

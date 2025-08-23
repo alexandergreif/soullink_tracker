@@ -109,7 +109,7 @@ class MockDashboard:
     
     def connect_websocket(self, client: TestClient, run_id: str, token: str):
         """Connect to WebSocket and listen for messages."""
-        with client.websocket_connect(f"/v1/ws?run_id={run_id}&token={token}") as websocket:
+        with client.websocket_connect(f"/v1/ws/legacy?run_id={run_id}&token={token}") as websocket:
             # Receive welcome message
             welcome = websocket.receive_json()
             if welcome.get("type") == "connection_established":
@@ -180,8 +180,8 @@ class TestCompletePipeline:
                 })
                 mock_post.return_value = mock_response
                 
-                # Step 5: Connect dashboard WebSocket before processing
-                with client.websocket_connect(f"/v1/ws?run_id={run.id}&token={token}") as websocket:
+                # Step 5: Connect dashboard WebSocket before processing (using legacy endpoint)
+                with client.websocket_connect(f"/v1/ws/legacy?run_id={run.id}&token={token}") as websocket:
                     # Skip welcome message
                     welcome = websocket.receive_json()
                     assert welcome["type"] == "connection_established"
@@ -299,7 +299,7 @@ class TestCompletePipeline:
             watcher.player_id = str(player.id) 
             watcher.player_token = token
             
-            with client.websocket_connect(f"/v1/ws?run_id={run.id}&token={token}") as websocket:
+            with client.websocket_connect(f"/v1/ws/legacy?run_id={run.id}&token={token}") as websocket:
                 # Skip welcome message
                 websocket.receive_json()
                 
@@ -443,8 +443,8 @@ class TestPipelineIntegration:
         player = sample_player
         token = player._test_token
         
-        # Test that API events correctly trigger WebSocket broadcasts
-        with client.websocket_connect(f"/v1/ws?run_id={run.id}&token={token}") as websocket:
+        # Test that API events correctly trigger WebSocket broadcasts (using legacy endpoint)
+        with client.websocket_connect(f"/v1/ws/legacy?run_id={run.id}&token={token}") as websocket:
             # Skip welcome message
             welcome = websocket.receive_json()
             assert welcome["type"] == "connection_established"
