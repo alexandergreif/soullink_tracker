@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from ..auth.rate_limiter import GlobalRateLimiter, RateLimitConfig
+
 
 class ProblemDetailsException(HTTPException):
     """Enhanced HTTPException that includes RFC 9457 Problem Details."""
@@ -182,15 +184,155 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                 # Validate UUID v4 format
                 try:
                     parsed_uuid = UUID(idempotency_key)
-                    # Check if it's UUID v4
-                    if parsed_uuid.version != 4:
-                        raise ValueError("Not a UUID v4")
+                    # Check if it's UUID v4 or v5 (both are RFC 4122 compliant)
+                    if parsed_uuid.version not in [4, 5]:
+                        raise ValueError("Not a UUID v4 or v5")
                 except (ValueError, AttributeError):
                     raise ProblemDetailsException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         title="Invalid Idempotency Key",
-                        detail="Idempotency-Key header must be a valid UUID v4",
+                        detail="Idempotency-Key header must be a valid UUID v4 or v5",
                         type_uri="https://datatracker.ietf.org/doc/html/rfc4122#section-4.4",
                     )
 
+        return await call_next(request)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware to add comprehensive security headers to all responses."""
+
+    def __init__(self, app: ASGIApp, include_hsts: bool = False):
+        super().__init__(app)
+        self.include_hsts = include_hsts
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        response = await call_next(request)
+
+        # Skip actual WebSocket connections - they don't use HTTP headers the same way
+        # Only skip if this is a real WebSocket upgrade request
+        if "websocket" in request.headers.get("upgrade", "").lower():
+            return response
+
+        # X-Frame-Options: Prevent clickjacking attacks
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # X-Content-Type-Options: Prevent MIME-type confusion attacks
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # X-XSS-Protection: Legacy XSS filter (modern browsers use CSP)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+
+        # X-Permitted-Cross-Domain-Policies: Restrict cross-domain policies
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+
+        # Content-Security-Policy: Restrictive policy for XSS prevention
+        csp_policy = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src 'self' ws: wss:; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
+        )
+        response.headers["Content-Security-Policy"] = csp_policy
+
+        # Strict-Transport-Security: Only add in HTTPS production environments
+        if self.include_hsts and request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
+
+        # Referrer-Policy: Control referrer information leakage
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Permissions-Policy: Restrict browser features
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=()"
+        )
+
+        return response
+
+
+class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
+    """Middleware to apply global rate limiting to all API endpoints."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        rate_limiter: Optional[GlobalRateLimiter] = None,
+        config: Optional[RateLimitConfig] = None,
+    ):
+        super().__init__(app)
+        self.rate_limiter = rate_limiter or GlobalRateLimiter(config)
+
+        # Endpoints to exclude from rate limiting
+        self.excluded_paths = {
+            "/health",
+            "/ready",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/favicon.ico",
+        }
+
+        # Static file prefixes to exclude
+        self.excluded_prefixes = {
+            "/static/",
+            "/css/",
+            "/js/",
+        }
+
+    def _should_apply_rate_limiting(self, path: str) -> bool:
+        """Determine if rate limiting should be applied to this path."""
+        # Skip excluded paths
+        if path in self.excluded_paths:
+            return False
+
+        # Skip static files
+        if any(path.startswith(prefix) for prefix in self.excluded_prefixes):
+            return False
+
+        # Skip WebSocket upgrade requests (handled separately)
+        return True
+
+    def _extract_user_id(self, request: Request) -> Optional[str]:
+        """Extract user ID from authenticated request."""
+        try:
+            # Check for Authorization header
+            auth_header = request.headers.get("authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                return None
+
+            # For now, return None since user extraction would require JWT parsing
+            # This can be enhanced later to extract user_id from JWT token
+            # without full validation (just for rate limiting purposes)
+            return None
+        except Exception:
+            return None
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Skip rate limiting for excluded paths
+        if not self._should_apply_rate_limiting(request.url.path):
+            return await call_next(request)
+
+        # Skip WebSocket connections (they have different rate limiting)
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
+
+        # Extract user ID if available
+        user_id = self._extract_user_id(request)
+
+        try:
+            # Apply global rate limiting
+            self.rate_limiter.check_global_rate_limit(
+                request=request, endpoint_path=request.url.path, user_id=user_id
+            )
+        except HTTPException:
+            # Re-raise HTTPException to be handled by ProblemDetailsMiddleware
+            raise
+
+        # Proceed with the request
         return await call_next(request)

@@ -12,6 +12,7 @@ from ..db.database import get_db
 from ..db.models import Run, Player
 from ..store.event_store import EventStore, EventStoreError
 from ..store.projections import ProjectionEngine, ProjectionError
+from ..auth.jwt_auth import jwt_manager
 from ..config import get_config
 from .middleware import ProblemDetailsException
 from .schemas import (
@@ -20,6 +21,7 @@ from .schemas import (
     RunResponse,
     PlayerCreate,
     PlayerWithTokenResponse,
+    JWTTokenResponse,
 )
 from typing import List
 
@@ -30,15 +32,15 @@ router = APIRouter(prefix="/v1/admin", tags=["admin"])
 def require_localhost(request: Request):
     """Dependency to restrict admin endpoints to localhost only."""
     client_host = request.client.host if request.client else None
-    
+
     # Check both IPv4 and IPv6 localhost addresses
     localhost_ips = {"127.0.0.1", "::1"}
-    
+
     if client_host not in localhost_ips:
         logger.warning(f"Admin API access denied from {client_host}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin API only available from localhost"
+            detail="Admin API only available from localhost",
         )
     return True
 
@@ -48,13 +50,16 @@ def require_localhost(request: Request):
     response_model=List[RunResponse],
     responses={
         200: {"description": "List of all runs"},
-        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Admin API only available on localhost",
+        },
     },
 )
 def list_runs(
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ) -> List[RunResponse]:
     """
     List all SoulLink runs.
@@ -81,7 +86,10 @@ def list_runs(
     responses={
         201: {"description": "Run created successfully"},
         400: {"model": ProblemDetails, "description": "Invalid request"},
-        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Admin API only available on localhost",
+        },
         422: {"model": ProblemDetails, "description": "Validation error"},
     },
 )
@@ -89,7 +97,7 @@ def create_run(
     run_data: RunCreate,
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ) -> RunResponse:
     """
     Create a new SoulLink run.
@@ -101,16 +109,17 @@ def create_run(
         # Hash the password if provided
         password_salt = None
         password_hash = None
-        if hasattr(run_data, 'password') and run_data.password:
+        if hasattr(run_data, "password") and run_data.password:
             from ..auth.security import hash_password
+
             password_salt, password_hash = hash_password(run_data.password)
-        
+
         # Create new run
         new_run = Run(
             name=run_data.name,
             rules_json=run_data.rules_json,
             password_salt=password_salt,
-            password_hash=password_hash
+            password_hash=password_hash,
         )
 
         db.add(new_run)
@@ -149,7 +158,7 @@ def create_player(
     player_data: PlayerCreate,
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ) -> PlayerWithTokenResponse:
     """
     Create a new player in a run with secure token generation.
@@ -219,7 +228,10 @@ def create_player(
     "/players/{player_id}/token",
     responses={
         200: {"description": "Token generated successfully"},
-        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Admin API only available on localhost",
+        },
         404: {"model": ProblemDetails, "description": "Player not found"},
     },
 )
@@ -227,7 +239,7 @@ def generate_player_token(
     player_id: UUID,
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ) -> Dict[str, Any]:
     """
     Generate a new token for an existing player.
@@ -264,6 +276,70 @@ def generate_player_token(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             title="Internal Server Error",
             detail="Unable to generate token. Please check server logs for details.",
+        )
+
+
+@router.post(
+    "/players/{player_id}/generate-jwt",
+    response_model=JWTTokenResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {"description": "JWT tokens generated successfully"},
+        404: {"model": ProblemDetails, "description": "Player not found"},
+        500: {"model": ProblemDetails, "description": "Token generation failed"},
+    },
+)
+def generate_player_jwt_tokens(
+    player_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    _localhost: bool = Depends(require_localhost),
+) -> JWTTokenResponse:
+    """
+    Generate JWT tokens for an existing player (admin endpoint).
+
+    This is an admin-only endpoint that generates JWT access and refresh tokens
+    for a player. This is useful for long-running sessions where token refresh
+    is needed.
+
+    **IMPORTANT: The tokens are only shown once and cannot be retrieved again.**
+    """
+    # Verify the player exists
+    player = db.query(Player).filter(Player.id == player_id).first()
+    if not player:
+        raise ProblemDetailsException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Player Not Found",
+            detail=f"Player with ID {player_id} does not exist",
+        )
+
+    try:
+        # Generate JWT tokens
+        access_token, refresh_token, access_expires_at, refresh_expires_at = (
+            jwt_manager.create_tokens(
+                player_id=player.id,
+                run_id=player.run_id,
+                player_name=player.name,
+            )
+        )
+
+        logger.info(f"Generated JWT tokens for player {player.id} ({player.name})")
+
+        return JWTTokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            access_expires_at=access_expires_at,
+            refresh_expires_at=refresh_expires_at,
+            run_id=player.run_id,
+            player_id=player.id,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate JWT tokens for player {player_id}: {str(e)}")
+        raise ProblemDetailsException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            title="Internal Server Error",
+            detail="Unable to generate JWT tokens. Please check server logs for details.",
         )
 
 
@@ -361,13 +437,16 @@ def rebuild_projections(run_id: UUID, db: Session = Depends(get_db)) -> Dict[str
     "/players/stats",
     responses={
         200: {"description": "Player statistics across all runs"},
-        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Admin API only available on localhost",
+        },
     },
 )
 def get_player_statistics(
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ) -> Dict[str, Any]:
     """
     Get player statistics across all runs.
@@ -383,10 +462,14 @@ def get_player_statistics(
         total_players = db.query(func.count(Player.id)).scalar()
 
         # Get active players (those with sessions in last 5 minutes)
-        five_minutes_ago = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
-        active_players = db.query(func.count(func.distinct(PlayerSession.player_id))).filter(
-            PlayerSession.last_seen_at >= five_minutes_ago
-        ).scalar()
+        five_minutes_ago = datetime.now(timezone.utc).replace(
+            microsecond=0
+        ) - timedelta(minutes=5)
+        active_players = (
+            db.query(func.count(func.distinct(PlayerSession.player_id)))
+            .filter(PlayerSession.last_seen_at >= five_minutes_ago)
+            .scalar()
+        )
 
         # Get latest activity timestamp
         latest_activity = db.query(func.max(PlayerSession.last_seen_at)).scalar()
@@ -410,13 +493,16 @@ def get_player_statistics(
     "/players/global",
     responses={
         200: {"description": "List of all players across all runs"},
-        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Admin API only available on localhost",
+        },
     },
 )
 def get_global_players(
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ) -> List[Dict[str, Any]]:
     """
     Get all players across all runs with their associated run information.
@@ -429,29 +515,29 @@ def get_global_players(
         from ..db.models import PlayerSession
 
         # Query players with their run information and latest session data
-        query = db.query(
-            Player.id,
-            Player.run_id,
-            Player.name,
-            Player.game,
-            Player.region,
-            Player.created_at,
-            Run.name.label("run_name"),
-            func.max(PlayerSession.last_seen_at).label("last_seen")
-        ).join(
-            Run, Player.run_id == Run.id
-        ).outerjoin(
-            PlayerSession, Player.id == PlayerSession.player_id
-        ).group_by(
-            Player.id,
-            Player.run_id,
-            Player.name,
-            Player.game,
-            Player.region,
-            Player.created_at,
-            Run.name
-        ).order_by(
-            Player.created_at.desc()
+        query = (
+            db.query(
+                Player.id,
+                Player.run_id,
+                Player.name,
+                Player.game,
+                Player.region,
+                Player.created_at,
+                Run.name.label("run_name"),
+                func.max(PlayerSession.last_seen_at).label("last_seen"),
+            )
+            .join(Run, Player.run_id == Run.id)
+            .outerjoin(PlayerSession, Player.id == PlayerSession.player_id)
+            .group_by(
+                Player.id,
+                Player.run_id,
+                Player.name,
+                Player.game,
+                Player.region,
+                Player.created_at,
+                Run.name,
+            )
+            .order_by(Player.created_at.desc())
         )
 
         players = query.all()
@@ -459,16 +545,20 @@ def get_global_players(
         # Convert to list of dictionaries
         result = []
         for player in players:
-            result.append({
-                "id": str(player.id),
-                "run_id": str(player.run_id),
-                "name": player.name,
-                "game": player.game,
-                "region": player.region,
-                "created_at": player.created_at.isoformat(),
-                "run_name": player.run_name,
-                "last_seen": player.last_seen.isoformat() if player.last_seen else None,
-            })
+            result.append(
+                {
+                    "id": str(player.id),
+                    "run_id": str(player.run_id),
+                    "name": player.name,
+                    "game": player.game,
+                    "region": player.region,
+                    "created_at": player.created_at.isoformat(),
+                    "run_name": player.run_name,
+                    "last_seen": player.last_seen.isoformat()
+                    if player.last_seen
+                    else None,
+                }
+            )
 
         return result
 
@@ -550,7 +640,10 @@ def get_event_store_status(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         204: {"description": "Player deleted successfully"},
-        403: {"model": ProblemDetails, "description": "Admin API only available on localhost"},
+        403: {
+            "model": ProblemDetails,
+            "description": "Admin API only available on localhost",
+        },
         404: {"model": ProblemDetails, "description": "Player not found"},
     },
 )
@@ -558,14 +651,14 @@ def delete_player(
     player_id: UUID,
     request: Request,
     db: Session = Depends(get_db),
-    _localhost: bool = Depends(require_localhost)
+    _localhost: bool = Depends(require_localhost),
 ):
     """
     Delete a player from the system.
-    
+
     This is an admin-only endpoint that removes a player and all associated data
     including their sessions, encounters, and other related records.
-    
+
     **WARNING: This action cannot be undone!**
     """
     # Verify the player exists
@@ -576,17 +669,17 @@ def delete_player(
             title="Player Not Found",
             detail=f"Player with ID {player_id} does not exist",
         )
-    
+
     try:
         # Delete the player (CASCADE should handle related records)
         db.delete(player)
         db.commit()
-        
+
         logger.info(f"Player {player.name} (ID: {player_id}) deleted by admin")
-        
+
         # Return 204 No Content
         return None
-        
+
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to delete player: {str(e)}")

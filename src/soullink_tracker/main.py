@@ -12,8 +12,10 @@ from .api.middleware import (
     ProblemDetailsMiddleware,
     RequestSizeLimitMiddleware,
     IdempotencyMiddleware,
+    SecurityHeadersMiddleware,
+    GlobalRateLimitMiddleware,
 )
-from .config import get_web_directory, get_config
+from .config import get_web_directory, get_config, get_rate_limit_config
 from .api import runs, players, events, data, websockets, admin, auth
 
 # Create FastAPI app
@@ -25,13 +27,30 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Get configuration once for all middleware setup
+config = get_config()
+
 # Add custom middleware in correct order (innermost first)
 app.add_middleware(ProblemDetailsMiddleware)
+
+# Add global rate limiting if enabled
+if config.app.enable_global_rate_limiting:
+    from .auth.rate_limiter import GlobalRateLimiter
+
+    rate_limit_config = get_rate_limit_config()
+    global_rate_limiter = GlobalRateLimiter(rate_limit_config)
+    app.add_middleware(GlobalRateLimitMiddleware, rate_limiter=global_rate_limiter)
+
 app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware)
 
+# Add security headers middleware (outermost - applied last)
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    include_hsts=not config.server.debug,  # Enable HSTS in production only
+)
+
 # Add CORS middleware with secure configuration
-config = get_config()
 allowed_origins = [
     "http://127.0.0.1:8000",
     "http://localhost:8000",
@@ -39,19 +58,27 @@ allowed_origins = [
 
 # In development mode, allow additional localhost ports
 if config.server.debug:
-    allowed_origins.extend([
-        "http://127.0.0.1:3000",  # Development frontend
-        "http://localhost:3000",
-        "http://127.0.0.1:5000",  # Alternative dev ports
-        "http://localhost:5000",
-    ])
+    allowed_origins.extend(
+        [
+            "http://127.0.0.1:3000",  # Development frontend
+            "http://localhost:3000",
+            "http://127.0.0.1:5000",  # Alternative dev ports
+            "http://localhost:5000",
+        ]
+    )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
 )
 
 # Global web directory - will be set by setup_static_files()
@@ -100,6 +127,32 @@ app.include_router(auth.router)
 @app.on_event("startup")
 async def startup_event():
     """Initialize static files and other startup tasks."""
+    # Critical security validation - must be done first
+    from .config import validate_startup_security, config_manager
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # SECURITY: Validate critical security configuration before starting
+    try:
+        validate_startup_security()
+        logger.info("Startup security validation passed")
+    except SystemExit:
+        logger.critical(
+            "Application startup aborted due to security configuration issues"
+        )
+        raise
+
+    # Validate general configuration
+    issues = config_manager.validate_config()
+
+    if issues:
+        logger.warning("Configuration validation warnings:")
+        for issue in issues:
+            logger.warning(f"  - {issue}")
+    else:
+        logger.info("Configuration validation passed")
+
     init_static_files()
 
 
@@ -129,10 +182,10 @@ async def admin_panel(request: Request):
     # Security check: Admin panel only accessible from localhost
     client_host = request.client.host if request.client else None
     localhost_ips = {"127.0.0.1", "::1"}
-    
+
     if client_host not in localhost_ips:
         return RedirectResponse(url="/docs")
-    
+
     if _web_directory:
         admin_html = _web_directory / "admin.html"
         if admin_html.exists():
@@ -183,11 +236,11 @@ async def readiness_check():
     from .config import get_config
     from sqlalchemy import text
     import time
-    
+
     start_time = time.time()
     checks = {"database": False, "config": False}
     errors = []
-    
+
     try:
         # Check database connectivity
         db = next(get_db())
@@ -195,7 +248,7 @@ async def readiness_check():
         checks["database"] = True
     except Exception as e:
         errors.append(f"Database check failed: {str(e)}")
-    
+
     try:
         # Check configuration
         config = get_config()
@@ -203,10 +256,10 @@ async def readiness_check():
             checks["config"] = True
     except Exception as e:
         errors.append(f"Config check failed: {str(e)}")
-    
+
     response_time_ms = round((time.time() - start_time) * 1000, 2)
     all_ready = all(checks.values())
-    
+
     response = {
         "status": "ready" if all_ready else "not_ready",
         "service": "soullink-tracker",
@@ -214,11 +267,12 @@ async def readiness_check():
         "checks": checks,
         "response_time_ms": response_time_ms,
     }
-    
+
     if errors:
         response["errors"] = errors
-    
+
     # Return appropriate status code
     status_code = 200 if all_ready else 503
     from fastapi.responses import JSONResponse
+
     return JSONResponse(content=response, status_code=status_code)

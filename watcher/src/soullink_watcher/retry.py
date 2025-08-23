@@ -54,7 +54,7 @@ def parse_retry_after(value: str, now: datetime) -> Optional[datetime]:
     try:
         seconds = int(value)
         if seconds >= 0:
-            return now + datetime.timedelta(seconds=seconds)
+            return now + timedelta(seconds=seconds)
     except ValueError:
         pass
     
@@ -73,7 +73,7 @@ def parse_retry_after(value: str, now: datetime) -> Optional[datetime]:
             retry_time = retry_time.astimezone(timezone.utc)
         
         # Only return if it's a reasonable future time (not past, not too far future)
-        if now <= retry_time <= now + datetime.timedelta(hours=24):
+        if now <= retry_time <= now + timedelta(hours=24):
             return retry_time
             
     except (ValueError, TypeError, OverflowError):

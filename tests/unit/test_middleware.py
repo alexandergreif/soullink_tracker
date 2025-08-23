@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from src.soullink_tracker.api.middleware import (
     ProblemDetailsException, ProblemDetailsMiddleware, 
-    RequestSizeLimitMiddleware, IdempotencyMiddleware
+    RequestSizeLimitMiddleware, IdempotencyMiddleware,
+    SecurityHeadersMiddleware
 )
 
 
@@ -293,3 +294,230 @@ class TestMiddlewareIntegration:
         
         problem = response.json()
         assert problem["title"] == "Not Found"
+
+
+class TestSecurityHeadersMiddleware:
+    """Test security headers middleware."""
+    
+    def test_security_headers_added_to_response(self):
+        """Test that all security headers are added to HTTP responses."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "success"}
+        
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        # Verify all security headers are present
+        assert response.headers["X-Frame-Options"] == "DENY"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["X-XSS-Protection"] == "1; mode=block"
+        assert response.headers["X-Permitted-Cross-Domain-Policies"] == "none"
+        assert "Content-Security-Policy" in response.headers
+        assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+        assert response.headers["Permissions-Policy"] == "geolocation=(), microphone=(), camera=()"
+
+    def test_content_security_policy_header(self):
+        """Test that CSP header contains expected directives."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "success"}
+        
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        csp = response.headers["Content-Security-Policy"]
+        
+        # Verify key CSP directives
+        assert "default-src 'self'" in csp
+        assert "script-src 'self' 'unsafe-inline'" in csp
+        assert "style-src 'self' 'unsafe-inline'" in csp
+        assert "img-src 'self' data:" in csp
+        assert "connect-src 'self' ws: wss:" in csp
+        assert "object-src 'none'" in csp
+        assert "frame-ancestors 'none'" in csp
+
+    def test_hsts_header_in_production(self):
+        """Test that HSTS header is added when include_hsts=True and HTTPS."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, include_hsts=True)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "success"}
+        
+        # Test with HTTPS request
+        client = TestClient(app, base_url="https://example.com")
+        response = client.get("/test")
+        
+        # HSTS should be present for HTTPS
+        assert "Strict-Transport-Security" in response.headers
+        hsts = response.headers["Strict-Transport-Security"]
+        assert "max-age=31536000" in hsts
+        assert "includeSubDomains" in hsts
+        assert "preload" in hsts
+
+    def test_no_hsts_header_in_development(self):
+        """Test that HSTS header is NOT added when include_hsts=False."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, include_hsts=False)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "success"}
+        
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        # HSTS should NOT be present in development
+        assert "Strict-Transport-Security" not in response.headers
+
+    def test_no_hsts_header_for_http(self):
+        """Test that HSTS header is NOT added for HTTP even when include_hsts=True."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, include_hsts=True)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "success"}
+        
+        # Test with HTTP request (default TestClient base_url)
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        # HSTS should NOT be present for HTTP
+        assert "Strict-Transport-Security" not in response.headers
+
+    def test_websocket_connections_skip_headers(self):
+        """Test that WebSocket paths don't interfere with middleware."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/v1/ws-info")
+        async def ws_info_endpoint():
+            return {"message": "WebSocket info endpoint"}
+        
+        @app.get("/regular-endpoint")
+        async def regular_endpoint():
+            return {"message": "Regular endpoint"}
+        
+        client = TestClient(app)
+        
+        # Test that /v1/ws path prefix works correctly
+        response = client.get("/v1/ws-info")
+        assert response.status_code == 200
+        
+        # The middleware should still apply headers to HTTP endpoints
+        # even if they have 'ws' in the path
+        assert response.headers["X-Frame-Options"] == "DENY"
+        
+        # Test regular endpoint also gets headers
+        response2 = client.get("/regular-endpoint")
+        assert response2.headers["X-Frame-Options"] == "DENY"
+
+    def test_headers_not_duplicated(self):
+        """Test that headers aren't duplicated if middleware runs multiple times."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "success"}
+        
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        # Headers should be single values, not lists
+        for header_name in ["X-Frame-Options", "X-Content-Type-Options", "X-XSS-Protection"]:
+            header_value = response.headers.get(header_name)
+            assert isinstance(header_value, str), f"{header_name} should be a string, not a list"
+
+    def test_security_headers_on_error_responses(self):
+        """Test that security headers are added even to error responses."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/test")
+        async def test_endpoint():
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        # Verify security headers are present on error responses
+        assert response.status_code == 404
+        assert response.headers["X-Frame-Options"] == "DENY"
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert "Content-Security-Policy" in response.headers
+
+    def test_security_headers_on_different_methods(self):
+        """Test that security headers are added for all HTTP methods."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/test")
+        async def get_endpoint():
+            return {"message": "get"}
+        
+        @app.post("/test")
+        async def post_endpoint():
+            return {"message": "post"}
+        
+        @app.put("/test")
+        async def put_endpoint():
+            return {"message": "put"}
+        
+        @app.delete("/test")
+        async def delete_endpoint():
+            return {"message": "delete"}
+        
+        client = TestClient(app)
+        
+        # Test all methods have security headers
+        for method in ['get', 'post', 'put', 'delete']:
+            response = getattr(client, method)("/test")
+            assert response.headers["X-Frame-Options"] == "DENY"
+            assert "Content-Security-Policy" in response.headers
+
+    def test_security_headers_with_json_responses(self):
+        """Test that security headers work with JSON API responses."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/api/data")
+        async def api_endpoint():
+            return {"data": [1, 2, 3], "status": "success"}
+        
+        client = TestClient(app)
+        response = client.get("/api/data")
+        
+        # Verify JSON response works with security headers
+        assert response.status_code == 200
+        assert response.json() == {"data": [1, 2, 3], "status": "success"}
+        assert response.headers["X-Frame-Options"] == "DENY"
+        assert "Content-Security-Policy" in response.headers
+
+    def test_security_headers_with_static_file_responses(self):
+        """Test that security headers are compatible with file responses."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        @app.get("/file")
+        async def file_endpoint():
+            from fastapi.responses import PlainTextResponse
+            return PlainTextResponse("Hello, World!", media_type="text/plain")
+        
+        client = TestClient(app)
+        response = client.get("/file")
+        
+        # Verify file response works with security headers
+        assert response.status_code == 200
+        assert response.text == "Hello, World!"
+        assert response.headers["X-Frame-Options"] == "DENY"
+        assert "Content-Security-Policy" in response.headers

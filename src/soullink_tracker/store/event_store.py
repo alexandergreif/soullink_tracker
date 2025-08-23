@@ -133,12 +133,12 @@ class EventStore:
     ) -> List[EventEnvelope]:
         """
         Convenience method to get events of a specific type.
-        
+
         Args:
             run_id: Run ID to filter by
             event_type: Specific event type to filter for
             limit: Maximum number of events to return
-            
+
         Returns:
             List of event envelopes for the specified type
         """
@@ -171,9 +171,7 @@ class EventStore:
             # Deserialize and wrap in envelope
             event = self._deserialize_event(record)
             return EventEnvelope(
-                sequence_number=record.seq,
-                stored_at=record.created_at,
-                event=event
+                sequence_number=record.seq, stored_at=record.created_at, event=event
             )
 
         except SQLAlchemyError as e:
@@ -252,32 +250,6 @@ class EventStore:
 
         except SQLAlchemyError as e:
             raise EventStoreError(f"Failed to replay events: {e}") from e
-
-    def get_event_by_id(self, event_id: UUID) -> Optional[EventEnvelope]:
-        """
-        Get a specific event by its ID.
-
-        Args:
-            event_id: Event ID to look up
-
-        Returns:
-            Event envelope if found, None otherwise
-        """
-        try:
-            record = self.db.execute(
-                select(EventModel).where(EventModel.id == event_id)
-            ).scalar_one_or_none()
-
-            if not record:
-                return None
-
-            event = self._deserialize_event(record)
-            return EventEnvelope(
-                sequence_number=record.seq, stored_at=record.created_at, event=event
-            )
-
-        except SQLAlchemyError as e:
-            raise EventStoreError(f"Failed to get event by ID: {e}") from e
 
     def _deserialize_event(self, record: EventModel) -> DomainEvent:
         """

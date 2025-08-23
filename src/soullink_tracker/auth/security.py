@@ -21,20 +21,18 @@ def hash_password(password: str, salt: Optional[bytes] = None) -> tuple[str, str
     """
     if salt is None:
         salt = secrets.token_bytes(32)  # 256-bit salt
-    
+
     # Use configurable iterations (default 120,000)
     from ..config import get_config
+
     config = get_config()
     iterations = config.app.password_hash_iterations
-    
+
     # Generate PBKDF2-HMAC-SHA256 hash
     password_hash = hashlib.pbkdf2_hmac(
-        'sha256',
-        password.encode('utf-8'),
-        salt,
-        iterations
+        "sha256", password.encode("utf-8"), salt, iterations
     )
-    
+
     return salt.hex(), password_hash.hex()
 
 
@@ -52,27 +50,25 @@ def verify_password(password: str, salt_hex: str, hash_hex: str) -> bool:
     """
     if not password or not salt_hex or not hash_hex:
         return False
-    
+
     try:
         salt = bytes.fromhex(salt_hex)
         stored_hash = bytes.fromhex(hash_hex)
-        
+
         # Use same iterations as hash_password
         from ..config import get_config
+
         config = get_config()
         iterations = config.app.password_hash_iterations
-        
+
         # Generate hash with provided salt
         computed_hash = hashlib.pbkdf2_hmac(
-            'sha256',
-            password.encode('utf-8'),
-            salt,
-            iterations
+            "sha256", password.encode("utf-8"), salt, iterations
         )
-        
+
         # Use constant-time comparison to prevent timing attacks
         return hmac.compare_digest(computed_hash, stored_hash)
-    
+
     except (ValueError, TypeError):
         # Invalid hex encoding or other format errors
         return False
@@ -88,10 +84,10 @@ def generate_session_token() -> tuple[str, str]:
     """
     # Generate cryptographically secure token (~32 chars URL-safe)
     token = secrets.token_urlsafe(24)  # 24 bytes -> ~32 chars
-    
+
     # Create SHA-256 hash for storage
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    
+
     return token, token_hash
 
 
@@ -119,10 +115,11 @@ def validate_session_token_format(token: str) -> None:
             detail="Invalid session token format",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # Check for URL-safe characters only (base64url alphabet)
     import string
-    valid_chars = string.ascii_letters + string.digits + '-_'
+
+    valid_chars = string.ascii_letters + string.digits + "-_"
     if not all(c in valid_chars for c in token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -62,7 +62,7 @@ class Run(Base):
     name = Column(String(255), nullable=False)
     rules_json = Column(JSON, nullable=False, default=dict)
     password_hash = Column(String(255), nullable=True)  # Password-based auth
-    password_salt = Column(String(64), nullable=True)   # Salt for password hashing
+    password_salt = Column(String(64), nullable=True)  # Salt for password hashing
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -71,7 +71,9 @@ class Run(Base):
 
     # Relationships
     players = relationship("Player", back_populates="run", cascade="all, delete-orphan")
-    sessions = relationship("PlayerSession", back_populates="run", cascade="all, delete-orphan")
+    sessions = relationship(
+        "PlayerSession", back_populates="run", cascade="all, delete-orphan"
+    )
     encounters = relationship(
         "Encounter", back_populates="run", cascade="all, delete-orphan"
     )
@@ -109,7 +111,9 @@ class Player(Base):
 
     # Relationships
     run = relationship("Run", back_populates="players")
-    sessions = relationship("PlayerSession", back_populates="player", cascade="all, delete-orphan")
+    sessions = relationship(
+        "PlayerSession", back_populates="player", cascade="all, delete-orphan"
+    )
     encounters = relationship(
         "Encounter", back_populates="player", cascade="all, delete-orphan"
     )
@@ -413,6 +417,9 @@ class IdempotencyKey(Base):
 
     __table_args__ = (
         Index("ix_idempotency_created_at", "created_at"),  # For TTL cleanup
+        UniqueConstraint(
+            "key", "run_id", "player_id", "request_hash", name="uq_idempotency_full"
+        ),
     )
 
     def __repr__(self) -> str:

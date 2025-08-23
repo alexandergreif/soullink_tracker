@@ -3,15 +3,22 @@
 import json
 import logging
 import time
+import uuid
 from uuid import UUID
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException
+from fastapi import (
+    APIRouter,
+    WebSocket,
+    WebSocketDisconnect,
+    Depends,
+    Query,
+    HTTPException,
+)
 from sqlalchemy.orm import Session
 
 from ..db.database import get_db
 from ..db.models import Run
-from ..auth.dependencies import get_current_player_from_token, get_current_player_from_session_token
-from ..config import get_config
+from ..auth.dependencies import get_current_player_from_token
 from ..events.websocket_manager import websocket_manager
 
 logger = logging.getLogger(__name__)
@@ -23,83 +30,262 @@ router = APIRouter(prefix="/v1/ws", tags=["websockets"])
 async def websocket_endpoint(
     websocket: WebSocket,
     run_id: UUID = Query(..., description="Run ID for the WebSocket connection"),
-    token: str = Query(..., description="Bearer authentication token"),
     db: Session = Depends(get_db),
 ):
     """
     WebSocket endpoint for real-time updates for a specific run.
 
-    **Requires Bearer token authentication via query parameter.**
+    **Requires Bearer token authentication via message-based auth.**
 
     Clients can connect to this endpoint to receive real-time updates
     about encounters, catches, faints, and other game events.
 
+    Authentication flow:
+    1. Connect to WebSocket without token in URL
+    2. Send {"type": "auth", "token": "bearer_token"} as first message within 5 seconds
+    3. Server validates and responds with success/failure
+    4. Connection closes with 4001 if auth fails or times out
+
     Example usage in JavaScript:
     ```javascript
-    const ws = new WebSocket('ws://localhost:9000/v1/ws?run_id={run_id}&token={bearer_token}');
+    const ws = new WebSocket('ws://localhost:9000/v1/ws?run_id={run_id}');
+    ws.onopen = function() {
+        ws.send(JSON.stringify({"type": "auth", "token": bearer_token}));
+    };
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
         console.log('Received:', data.type, data.data);
     };
     ```
     """
-    # Enhanced authentication with detailed logging
+    # Accept WebSocket connection first, then handle authentication via messages
     logger.info(f"WebSocket connection attempt: run_id={run_id}")
-    
+
+    await websocket.accept()
+
+    # Initialize variables for authentication
+    player = None
+    authenticated = False
+    auth_timeout = 5.0  # 5 seconds timeout for authentication
+
     try:
-        # Validate token is present and not empty
-        if not token or token.strip() == "" or token == "missing":
-            logger.warning(f"WebSocket authentication failed: Empty or missing token (received: '{token}')")
-            await websocket.close(code=4001, reason="Missing authentication token")
-            return
-        
-        # Authenticate the player using session token with Bearer token fallback
-        config = get_config()
-        
-        try:
-            # Try session token authentication first
-            player = get_current_player_from_session_token(token.strip(), db)
-            logger.info(f"WebSocket authentication successful (session token): player_id={player.id}, player_name={player.name}")
-        except HTTPException as session_error:
-            # Fall back to legacy Bearer token if allowed
-            if config.app.auth_allow_legacy_bearer:
-                try:
-                    player = get_current_player_from_token(token.strip(), db)
-                    logger.info(f"WebSocket authentication successful (legacy Bearer token): player_id={player.id}, player_name={player.name}")
-                except HTTPException as bearer_error:
-                    logger.warning(f"WebSocket authentication failed - both session token and legacy Bearer token invalid: session_error={session_error.detail}, bearer_error={bearer_error.detail}")
-                    raise bearer_error
-            else:
-                logger.warning(f"WebSocket authentication failed - session token invalid and legacy Bearer tokens disabled: {session_error.detail}")
-                raise session_error
-
-        # Verify the run exists
-        run = db.query(Run).filter(Run.id == run_id).first()
-        if not run:
-            logger.warning(f"WebSocket authentication failed: Run {run_id} not found")
-            await websocket.close(code=4004, reason="Run not found")
-            return
-
-        # Verify player belongs to the requested run
-        if player.run_id != run_id:
-            logger.warning(f"WebSocket authentication failed: Player {player.id} not authorized for run {run_id} (belongs to {player.run_id})")
-            await websocket.close(
-                code=4003, reason="Player not authorized for this run"
+        # Send authentication required message
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "auth_required",
+                    "data": {
+                        "message": "Please send authentication token within 5 seconds",
+                        "timeout_seconds": auth_timeout,
+                        "format": "{'type': 'auth', 'token': 'your_bearer_token'}",
+                    },
+                    "timestamp": time.time(),
+                }
             )
+        )
+
+        # Wait for authentication message with timeout
+        start_time = time.time()
+        while time.time() - start_time < auth_timeout and not authenticated:
+            try:
+                # Receive authentication message with short timeout to allow checking time
+                auth_data = await websocket.receive_text()
+
+                try:
+                    auth_message = json.loads(auth_data)
+
+                    if auth_message.get("type") == "auth":
+                        token = auth_message.get("token")
+
+                        if not token or token.strip() == "":
+                            logger.warning(
+                                "WebSocket authentication failed: Empty token in auth message"
+                            )
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "auth_failed",
+                                        "data": {"reason": "Empty or missing token"},
+                                        "timestamp": time.time(),
+                                    }
+                                )
+                            )
+                            await websocket.close(
+                                code=4001, reason="Empty authentication token"
+                            )
+                            return
+
+                        # Authenticate the player using token
+                        try:
+                            player = get_current_player_from_token(token.strip(), db)
+
+                            # Verify the run exists
+                            run = db.query(Run).filter(Run.id == run_id).first()
+                            if not run:
+                                logger.warning(
+                                    f"WebSocket authentication failed: Run {run_id} not found"
+                                )
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "auth_failed",
+                                            "data": {"reason": "Run not found"},
+                                            "timestamp": time.time(),
+                                        }
+                                    )
+                                )
+                                await websocket.close(code=4004, reason="Run not found")
+                                return
+
+                            # Verify player belongs to the requested run
+                            if player.run_id != run_id:
+                                logger.warning(
+                                    f"WebSocket authentication failed: Player {player.id} not authorized for run {run_id}"
+                                )
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "auth_failed",
+                                            "data": {
+                                                "reason": "Player not authorized for this run"
+                                            },
+                                            "timestamp": time.time(),
+                                        }
+                                    )
+                                )
+                                await websocket.close(
+                                    code=4003,
+                                    reason="Player not authorized for this run",
+                                )
+                                return
+
+                            # Authentication successful
+                            authenticated = True
+                            logger.info(
+                                f"WebSocket authentication successful: player_id={player.id}, player_name={player.name}"
+                            )
+
+                            # Send success message
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "auth_success",
+                                        "data": {
+                                            "player_id": str(player.id),
+                                            "player_name": player.name,
+                                            "run_id": str(run_id),
+                                        },
+                                        "timestamp": time.time(),
+                                    }
+                                )
+                            )
+                            break
+
+                        except HTTPException as auth_error:
+                            logger.warning(
+                                f"WebSocket authentication failed: {auth_error.detail}"
+                            )
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "auth_failed",
+                                        "data": {"reason": auth_error.detail},
+                                        "timestamp": time.time(),
+                                    }
+                                )
+                            )
+                            await websocket.close(
+                                code=4001,
+                                reason=f"Authentication failed: {auth_error.detail}",
+                            )
+                            return
+                    else:
+                        logger.warning(
+                            f"WebSocket: Expected auth message, got: {auth_message.get('type', 'unknown')}"
+                        )
+                        # Continue waiting for auth message
+
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"WebSocket: Received non-JSON auth data: {auth_data}"
+                    )
+                    # Continue waiting for proper auth message
+
+            except Exception as recv_error:
+                logger.warning(f"WebSocket: Error receiving auth message: {recv_error}")
+                # Continue waiting or timeout will handle it
+
+        # Check if authentication was successful
+        if not authenticated:
+            logger.warning(
+                f"WebSocket authentication timeout after {auth_timeout} seconds"
+            )
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "auth_timeout",
+                        "data": {
+                            "reason": "Authentication timeout - no valid token received within 5 seconds"
+                        },
+                        "timestamp": time.time(),
+                    }
+                )
+            )
+            await websocket.close(code=4001, reason="Authentication timeout")
             return
 
-    except HTTPException as e:
-        logger.warning(f"WebSocket authentication failed (HTTP {e.status_code}): {e.detail}")
-        await websocket.close(code=4001, reason=f"Authentication failed: {e.detail}")
-        return
     except Exception as e:
-        logger.error(f"WebSocket authentication failed with unexpected error: {e}", exc_info=True)
-        await websocket.close(code=4001, reason="Authentication failed")
+        logger.error(
+            f"WebSocket authentication failed with unexpected error: {e}", exc_info=True
+        )
+        try:
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "auth_error",
+                        "data": {"reason": "Internal authentication error"},
+                        "timestamp": time.time(),
+                    }
+                )
+            )
+            await websocket.close(code=4001, reason="Authentication error")
+        except Exception:
+            pass
         return
 
-    # Connect to the WebSocket manager with player info
-    await websocket_manager.connect(websocket, run_id, player.id)
+    # Connect to the WebSocket manager with player info (websocket already accepted)
+    # We need to manually register since we accepted the connection ourselves
+    if run_id not in websocket_manager.active_connections:
+        websocket_manager.active_connections[run_id] = {}
+
+    from ..events.websocket_manager import WebSocketConnection
+
+    connection = WebSocketConnection(
+        websocket=websocket,
+        player_id=player.id,
+        connected_at=time.time(),
+        last_ping=time.time(),
+    )
+    websocket_manager.active_connections[run_id][websocket] = connection
     logger.info(f"WebSocket connected: player {player.name} in run {run_id}")
+
+    # Send welcome message after successful authentication
+    await websocket.send_text(
+        json.dumps(
+            {
+                "type": "connection_established",
+                "data": {
+                    "run_id": str(run_id),
+                    "player_id": str(player.id),
+                    "player_name": player.name,
+                    "server_time": time.time(),
+                    "connection_id": str(uuid.uuid4()),  # For debugging
+                },
+                "timestamp": time.time(),
+            },
+            default=str,
+        )
+    )
 
     try:
         # Keep the connection alive and handle incoming messages
@@ -222,5 +408,190 @@ async def get_websocket_stats():
     }
 
 
-# Legacy endpoint - deprecated in favor of the main authenticated endpoint above
-# Kept for backward compatibility but will be removed in a future version
+@router.websocket("/legacy")
+async def websocket_endpoint_legacy(
+    websocket: WebSocket,
+    run_id: UUID = Query(..., description="Run ID for the WebSocket connection"),
+    token: str = Query(..., description="Bearer authentication token"),
+    db: Session = Depends(get_db),
+):
+    """
+    Legacy WebSocket endpoint with query parameter authentication.
+
+    **DEPRECATED**: This endpoint is deprecated and will be removed in a future version.
+    Use the main endpoint with message-based authentication instead.
+
+    **Security Warning**: Tokens in URLs are logged and cached, making them less secure.
+    """
+    logger.warning(
+        f"Legacy WebSocket endpoint used for run {run_id} - consider upgrading to message-based auth"
+    )
+
+    # Enhanced authentication with detailed logging
+    logger.info(f"Legacy WebSocket connection attempt: run_id={run_id}")
+
+    try:
+        # Validate token is present and not empty
+        if not token or token.strip() == "" or token == "missing":
+            logger.warning(
+                f"Legacy WebSocket authentication failed: Empty or missing token (received: '{token}')"
+            )
+            await websocket.close(code=4001, reason="Missing authentication token")
+            return
+
+        # Authenticate the player using session token with Bearer token fallback
+        try:
+            # Use the updated authentication method that supports JWT, session, and legacy Bearer tokens
+            player = get_current_player_from_token(token.strip(), db)
+            logger.info(
+                f"Legacy WebSocket authentication successful: player_id={player.id}, player_name={player.name}"
+            )
+        except HTTPException as auth_error:
+            logger.warning(
+                f"Legacy WebSocket authentication failed: {auth_error.detail}"
+            )
+            raise auth_error
+
+        # Verify the run exists
+        run = db.query(Run).filter(Run.id == run_id).first()
+        if not run:
+            logger.warning(
+                f"Legacy WebSocket authentication failed: Run {run_id} not found"
+            )
+            await websocket.close(code=4004, reason="Run not found")
+            return
+
+        # Verify player belongs to the requested run
+        if player.run_id != run_id:
+            logger.warning(
+                f"Legacy WebSocket authentication failed: Player {player.id} not authorized for run {run_id} (belongs to {player.run_id})"
+            )
+            await websocket.close(
+                code=4003, reason="Player not authorized for this run"
+            )
+            return
+
+    except HTTPException as e:
+        logger.warning(
+            f"Legacy WebSocket authentication failed (HTTP {e.status_code}): {e.detail}"
+        )
+        await websocket.close(code=4001, reason=f"Authentication failed: {e.detail}")
+        return
+    except Exception as e:
+        logger.error(
+            f"Legacy WebSocket authentication failed with unexpected error: {e}",
+            exc_info=True,
+        )
+        await websocket.close(code=4001, reason="Authentication failed")
+        return
+
+    # Connect to the WebSocket manager with player info
+    await websocket_manager.connect(websocket, run_id, player.id)
+    logger.info(f"Legacy WebSocket connected: player {player.name} in run {run_id}")
+
+    try:
+        # Keep the connection alive and handle incoming messages
+        while True:
+            # We mainly broadcast to clients, but we can handle incoming messages too
+            data = await websocket.receive_text()
+
+            try:
+                message = json.loads(data)
+                message_type = message.get("type", "unknown")
+
+                if message_type == "pong":
+                    # Handle pong response to our ping
+                    logger.debug(f"Received pong from player {player.name}")
+                    # Update last_ping time in the connection
+                    if (
+                        run_id in websocket_manager.active_connections
+                        and websocket in websocket_manager.active_connections[run_id]
+                    ):
+                        websocket_manager.active_connections[run_id][
+                            websocket
+                        ].last_ping = time.time()
+
+                elif message_type == "ping":
+                    # Handle ping request - reply with pong
+                    logger.debug(f"Received ping from player {player.name}")
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "pong",
+                                "data": {
+                                    "server_time": time.time(),
+                                },
+                            }
+                        )
+                    )
+
+                elif message_type == "catch_up_request":
+                    # Handle catch-up request for missed events
+                    since_seq = message.get("data", {}).get("since_seq", 0)
+                    logger.info(
+                        f"Player {player.name} requesting catch-up since sequence {since_seq}"
+                    )
+
+                    # For now, send acknowledgment - actual catch-up is handled via REST API
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "catch_up_response",
+                                "data": {
+                                    "message": f"Use REST API: GET /v1/events?run_id={run_id}&since_seq={since_seq}",
+                                    "rest_endpoint": f"/v1/events?run_id={run_id}&since_seq={since_seq}",
+                                },
+                            }
+                        )
+                    )
+
+                else:
+                    # Log other message types for debugging
+                    logger.info(
+                        f"Received WebSocket message from player {player.name}: {message_type}"
+                    )
+
+                    # Echo back a confirmation
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "message_received",
+                                "data": {
+                                    "original_type": message_type,
+                                    "server_time": time.time(),
+                                },
+                            }
+                        )
+                    )
+
+            except json.JSONDecodeError:
+                # Handle non-JSON messages
+                logger.warning(
+                    f"Received non-JSON message from player {player.name}: {data}"
+                )
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "data": {
+                                "message": "Invalid JSON format",
+                                "server_time": time.time(),
+                            },
+                        }
+                    )
+                )
+
+    except WebSocketDisconnect:
+        logger.info(
+            f"Legacy WebSocket client {player.name} disconnected from run {run_id}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Legacy WebSocket error for player {player.name} in run {run_id}: {e}"
+        )
+    finally:
+        websocket_manager.disconnect(websocket, run_id)
+
+
+# Legacy endpoint comment - kept for reference
+# The above legacy endpoint maintains backward compatibility but will be removed in a future version

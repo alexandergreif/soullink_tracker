@@ -4,10 +4,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
-from pydantic.types import constr
+from pydantic import BaseModel, Field, ConfigDict, model_validator  # type: ignore
 
-from ..core.enums import EncounterMethod, EncounterStatus, RodKind, GameVersion, Region
+from ..core.enums import EncounterMethod, EncounterStatus, RodKind
 
 
 # Base response models
@@ -37,10 +36,14 @@ class ProblemDetails(BaseModel):
 class LoginRequest(BaseModel):
     """Schema for login request."""
 
-    run_id: Optional[UUID] = Field(None, description="UUID of the run (alternative to run_name)")
-    run_name: Optional[str] = Field(None, description="Name of the run (alternative to run_id)")
-    player_name: constr(min_length=1, max_length=100) = Field(description="Player name")
-    password: constr(min_length=1) = Field(description="Run password")
+    run_id: Optional[UUID] = Field(
+        None, description="UUID of the run (alternative to run_name)"
+    )
+    run_name: Optional[str] = Field(
+        None, description="Name of the run (alternative to run_id)"
+    )
+    player_name: str = Field(description="Player name", min_length=1, max_length=100)
+    password: str = Field(description="Run password", min_length=1)
 
 
 class LoginResponse(BaseModel):
@@ -52,21 +55,42 @@ class LoginResponse(BaseModel):
     expires_at: datetime = Field(description="Token expiration timestamp")
 
 
-class LoginResponse(BaseModel):
-    """Schema for login response."""
+class JWTTokenResponse(BaseModel):
+    """Schema for JWT token response."""
 
-    session_token: str = Field(description="Session token for API authentication")
+    access_token: str = Field(description="JWT access token")
+    refresh_token: str = Field(description="JWT refresh token")
+    token_type: str = Field(default="bearer", description="Token type")
+    access_expires_at: datetime = Field(description="Access token expiration timestamp")
+    refresh_expires_at: datetime = Field(
+        description="Refresh token expiration timestamp"
+    )
     run_id: UUID = Field(description="UUID of the run")
     player_id: UUID = Field(description="UUID of the player")
-    expires_at: datetime = Field(description="Token expiration timestamp")
+
+
+class TokenRefreshRequest(BaseModel):
+    """Schema for token refresh request."""
+
+    refresh_token: str = Field(description="JWT refresh token")
+
+
+class TokenRefreshResponse(BaseModel):
+    """Schema for token refresh response."""
+
+    access_token: str = Field(description="New JWT access token")
+    token_type: str = Field(default="bearer", description="Token type")
+    expires_at: datetime = Field(description="Access token expiration timestamp")
 
 
 # Run-related schemas
 class RunCreate(BaseModel):
     """Schema for creating a new run."""
 
-    name: constr(min_length=1, max_length=255) = Field(description="Name of the run")
-    password: Optional[constr(min_length=1)] = Field(None, description="Password for run access")
+    name: str = Field(description="Name of the run", min_length=1, max_length=255)
+    password: Optional[str] = Field(
+        None, description="Password for run access", min_length=1
+    )
     rules_json: Dict = Field(
         default_factory=dict, description="Run rules configuration"
     )
@@ -91,7 +115,7 @@ class RunListResponse(BaseResponse):
 class PlayerCreate(BaseModel):
     """Schema for creating a new player."""
 
-    name: constr(min_length=1, max_length=100) = Field(description="Player name")
+    name: str = Field(description="Player name", min_length=1, max_length=100)
     game: Optional[str] = Field(None, description="Game version (HeartGold/SoulSilver)")
     region: Optional[str] = Field(None, description="Game region (EU/US/JP)")
 
@@ -110,9 +134,7 @@ class PlayerResponse(BaseResponse):
 class PlayerWithTokenResponse(PlayerResponse):
     """Schema for player response including token (only returned once)."""
 
-    new_token: str = Field(
-        description="Bearer token for this player (shown only once)"
-    )
+    new_token: str = Field(description="Bearer token for this player (shown only once)")
 
 
 class PlayerListResponse(BaseResponse):
@@ -121,9 +143,11 @@ class PlayerListResponse(BaseResponse):
     players: List[PlayerResponse]
 
 
-# Event-related schemas
+# Event-related schemas with V2/V3 compatibility
 class EventEncounter(BaseModel):
-    """Schema for encounter event."""
+    """Schema for encounter event with V2/V3 compatibility."""
+
+    model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
 
     type: str = Field("encounter", description="Event type")
     run_id: UUID
@@ -133,19 +157,118 @@ class EventEncounter(BaseModel):
     species_id: int
     level: int
     shiny: bool = False
-    method: EncounterMethod
+
+    # V3 canonical field
+    method: EncounterMethod = Field(description="Encounter method")
+
+    # V2 legacy field (aliased to method)
+    encounter_method: Optional[EncounterMethod] = Field(
+        None, alias="method", description="V2 legacy: encounter method"
+    )
+
     rod_kind: Optional[RodKind] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_v2_v3_compatibility(cls, values):
+        """Handle V2 to V3 format transformation."""
+        if isinstance(values, dict):
+            # Handle encounter_method -> method transformation
+            if "encounter_method" in values and "method" not in values:
+                values["method"] = values["encounter_method"]
+            elif "method" not in values and "encounter_method" not in values:
+                # Neither field provided, validation will catch this
+                pass
+
+            # String to enum coercion for method
+            method_value = values.get("method")
+            if isinstance(method_value, str):
+                try:
+                    values["method"] = EncounterMethod(method_value.strip().lower())
+                except ValueError:
+                    # Let normal validation handle invalid enum values
+                    pass
+
+            # String to enum coercion for rod_kind
+            rod_kind_value = values.get("rod_kind")
+            if isinstance(rod_kind_value, str):
+                try:
+                    values["rod_kind"] = RodKind(rod_kind_value.strip().lower())
+                except ValueError:
+                    # Let normal validation handle invalid enum values
+                    pass
+
+        return values
+
+    @model_validator(mode="after")
+    def validate_fishing_requirements(self):
+        """Validate that fishing encounters have rod_kind."""
+        if self.method == EncounterMethod.FISH and self.rod_kind is None:
+            raise ValueError("Fishing encounters must specify rod_kind")
+        return self
 
 
 class EventCatchResult(BaseModel):
     """Schema for catch result event."""
 
+    model_config = {"populate_by_name": True}
+
     type: str = Field("catch_result", description="Event type")
     run_id: UUID
     player_id: UUID
     time: datetime
-    encounter_id: UUID = Field(description="Required reference to the encounter event")
-    result: EncounterStatus = Field(description="Result of the catch attempt")
+
+    # Support both V2 legacy format and V3 format
+    encounter_id: Optional[UUID] = Field(
+        None, description="V3: Direct reference to encounter event"
+    )
+    encounter_ref: Optional[Dict[str, int]] = Field(
+        None, description="V2 legacy: Route/species reference"
+    )
+
+    # Support both field names for backward compatibility
+    result: Optional[EncounterStatus] = Field(
+        None, description="V3: Result of the catch attempt"
+    )
+    status: Optional[EncounterStatus] = Field(
+        None, description="V2 legacy: Status of catch attempt", alias="result"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_catch_result_fields(cls, values):
+        """Custom validation with V2/V3 compatibility and enum coercion."""
+        if isinstance(values, dict):
+            encounter_id = values.get("encounter_id")
+            encounter_ref = values.get("encounter_ref")
+            result = values.get("result")
+            status = values.get("status")
+
+            # Ensure we have an encounter reference
+            if not encounter_id and not encounter_ref:
+                raise ValueError(
+                    "Either encounter_id or encounter_ref must be provided"
+                )
+
+            # Handle status/result field compatibility
+            if status and not result:
+                values["result"] = status
+            elif result and not status:
+                values["status"] = result
+            elif not result and not status:
+                raise ValueError("Either result or status must be provided")
+
+            # String to enum coercion for result/status fields
+            for field in ["result", "status"]:
+                field_value = values.get(field)
+                if isinstance(field_value, str):
+                    try:
+                        values[field] = EncounterStatus(field_value.strip().lower())
+                    except ValueError:
+                        # Let normal validation handle invalid enum values
+                        pass
+
+        return values
 
 
 class EventFaint(BaseModel):
@@ -156,6 +279,9 @@ class EventFaint(BaseModel):
     player_id: UUID
     time: datetime
     pokemon_key: str = Field(description="Personality value or unique identifier")
+    party_index: Optional[int] = Field(
+        None, description="Position in party (0-5), optional for backward compatibility"
+    )
 
 
 class EventResponse(BaseResponse):

@@ -94,7 +94,7 @@ class ProjectionEngine:
                 "run_id": str(event.run_id),
                 "player_id": str(event.player_id),
             }
-            
+
             try:
                 handle_projection_integrity_error(e, context)
                 # If we get here, it was an expected constraint violation that was handled
@@ -223,7 +223,9 @@ class ProjectionEngine:
         # Create encounter lookup helper using direct event lookup
         def encounter_lookup(encounter_id: UUID) -> tuple[UUID, int, int]:
             """Resolve encounter_id to (player_id, route_id, family_id)."""
-            player_id, route_id, family_id = self._resolve_encounter(event.run_id, encounter_id)
+            player_id, route_id, family_id = self._resolve_encounter(
+                event.run_id, encounter_id
+            )
             return player_id, route_id, family_id
 
         # Apply rules
@@ -303,7 +305,7 @@ class ProjectionEngine:
             "run_id": str(event.run_id),
             "player_id": str(event.player_id),
         }
-        
+
         with expected_conflict_savepoint(
             self.db, {ExpectedIntegrityTag.ROUTE_ALREADY_FINALIZED}, context
         ):
@@ -322,7 +324,7 @@ class ProjectionEngine:
                 route_progress.last_update = event.timestamp
                 # Flush to trigger constraint check within savepoint
                 self.db.flush()
-        
+
         # Check if we hit the expected constraint violation
         if "integrity_tag" in context:
             # Another player won the race - this is expected and handled gracefully
@@ -337,13 +339,17 @@ class ProjectionEngine:
         blocked_families = set(
             self.db.execute(
                 select(Blocklist.family_id).where(Blocklist.run_id == run_id)
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
         # Get player route states
-        route_progress_entities = self.db.execute(
-            select(RouteProgress).where(RouteProgress.run_id == run_id)
-        ).scalars().all()
+        route_progress_entities = (
+            self.db.execute(select(RouteProgress).where(RouteProgress.run_id == run_id))
+            .scalars()
+            .all()
+        )
 
         player_routes = {}
         for progress in route_progress_entities:
@@ -358,32 +364,36 @@ class ProjectionEngine:
 
         return RunState(blocked_families=blocked_families, player_routes=player_routes)
 
-    def _resolve_encounter(self, run_id: UUID, encounter_id: UUID) -> tuple[UUID, int, int]:
+    def _resolve_encounter(
+        self, run_id: UUID, encounter_id: UUID
+    ) -> tuple[UUID, int, int]:
         """Resolve encounter_id to (player_id, route_id, family_id) using direct lookup.
-        
+
         Args:
             run_id: Run ID to search within
             encounter_id: Event ID of the encounter to resolve
-            
+
         Returns:
             Tuple of (player_id, route_id, family_id)
-            
+
         Raises:
             ProjectionError: If encounter not found or wrong event type
         """
         from .event_store import EventStore
-        
+
         event_store = EventStore(self.db)
         envelope = event_store.get_event_by_id(run_id, encounter_id)
-        
+
         if not envelope:
-            raise ProjectionError(f"Encounter {encounter_id} not found for run {run_id}")
-            
+            raise ProjectionError(
+                f"Encounter {encounter_id} not found for run {run_id}"
+            )
+
         if envelope.event.event_type != "encounter":
             raise ProjectionError(
                 f"Event {encounter_id} is not an encounter event (type: {envelope.event.event_type})"
             )
-            
+
         enc_event = envelope.event
         return enc_event.player_id, enc_event.route_id, enc_event.family_id
 
@@ -480,7 +490,7 @@ class ProjectionEngine:
             "entity_type": "blocklist",
             "entity_id": f"{run_id}:{family_id}",
         }
-        
+
         with expected_conflict_savepoint(
             self.db, {ExpectedIntegrityTag.BLOCK_ALREADY_EXISTS}, context
         ):
@@ -490,7 +500,7 @@ class ProjectionEngine:
             )
             self.db.add(blocklist_entry)
             self.db.flush()  # Trigger constraint check within savepoint
-        
+
         # Check if we hit the expected constraint violation
         if "integrity_tag" in context:
             # Family already blocked - update existing entry if needed
@@ -608,13 +618,17 @@ class ProjectionQueries:
         blocked_families = set(
             self.db.execute(
                 select(Blocklist.family_id).where(Blocklist.run_id == run_id)
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
         # Get player route states
-        route_progress_entities = self.db.execute(
-            select(RouteProgress).where(RouteProgress.run_id == run_id)
-        ).scalars().all()
+        route_progress_entities = (
+            self.db.execute(select(RouteProgress).where(RouteProgress.run_id == run_id))
+            .scalars()
+            .all()
+        )
 
         player_routes = {}
         for progress in route_progress_entities:

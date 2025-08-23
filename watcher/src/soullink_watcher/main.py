@@ -320,9 +320,68 @@ def main(config=None, argv=None) -> int:
                 if cfg.from_file:
                     events_ingested = ingest_from_file(cfg, spool, sender)
                     logger.info(f"File ingestion complete: {events_ingested} events processed")
-                
-                # Enter drain loop
-                drain_loop(cfg, spool, sender)
+                    
+                    # For file mode, process any remaining spooled events then exit
+                    # This handles cases where events failed during ingestion and were spooled
+                    from datetime import datetime, timezone
+                    now = datetime.now(timezone.utc)
+                    due_files = spool.list_due(now)
+                    
+                    if due_files:
+                        logger.info(f"Found {len(due_files)} spooled events, processing them before exit")
+                        # Process spooled events but don't enter infinite loop
+                        processed_count = 0
+                        for file_path in due_files:
+                            try:
+                                # Claim the file
+                                sending_path = spool.claim(file_path)
+                                
+                                # Load the record
+                                import json
+                                with sending_path.open('r', encoding='utf-8') as f:
+                                    record_data = json.load(f)
+                                
+                                from .spool import SpoolRecord
+                                record = SpoolRecord.from_dict(record_data)
+                                
+                                # Send the event
+                                result = sender.send_event(cfg, record)
+                                processed_count += 1
+                                
+                                if result.success:
+                                    # Success - delete the record
+                                    spool.delete(sending_path)
+                                    logger.debug(f"Successfully sent spooled event {record.idempotency_key}")
+                                    
+                                elif result.retriable:
+                                    # Retryable error - release back to spool but don't retry now
+                                    from datetime import timedelta
+                                    next_attempt_at = now + timedelta(seconds=60)  # Defer retry
+                                    spool.release_for_retry(sending_path, next_attempt_at, result.message or "Deferred for later")
+                                    logger.info(f"Spooled event {record.idempotency_key} deferred for later retry")
+                                    
+                                else:
+                                    # Non-retryable error - move to dead letter
+                                    dead_path = spool.move_to_dead(sending_path, result.message or "Non-retryable error")
+                                    logger.warning(f"Spooled event {record.idempotency_key} moved to dead letter: {result.message}")
+                                    
+                            except FileNotFoundError:
+                                # File was already processed
+                                continue
+                                
+                            except Exception as e:
+                                logger.error(f"Error processing spooled event {file_path}: {e}")
+                                continue
+                        
+                        logger.info(f"Processed {processed_count} spooled events, exiting file mode")
+                    else:
+                        logger.info("No spooled events found, exiting file mode")
+                    
+                    return 0
+                else:
+                    # No file specified, enter daemon mode
+                    logger.info("No file specified, entering daemon mode")
+                    drain_loop(cfg, spool, sender)
                 
             finally:
                 sender.close()

@@ -12,6 +12,7 @@ from requests.exceptions import RequestException, Timeout, ConnectionError
 from .config import WatcherConfig
 from .retry import parse_retry_after
 from .spool import SpoolRecord
+from .circuit_breaker import CircuitBreaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,13 @@ class EventSendResult:
 class EventSender:
     """HTTP client for sending events to the SoulLink API."""
     
-    def __init__(self, timeout_secs: float = 10.0):
+    def __init__(self, timeout_secs: float = 10.0, circuit_breaker_enabled: bool = True):
         """
         Initialize the event sender.
-        
+
         Args:
             timeout_secs: HTTP request timeout in seconds
+            circuit_breaker_enabled: Whether to enable circuit breaker protection
         """
         self.timeout_secs = timeout_secs
         self.session = requests.Session()
@@ -45,6 +47,18 @@ class EventSender:
         self.session.headers.update({
             'User-Agent': 'SoulLink-Watcher/1.0.0'
         })
+        
+        # Initialize circuit breaker
+        self.circuit_breaker_enabled = circuit_breaker_enabled
+        if circuit_breaker_enabled:
+            self.circuit_breaker = CircuitBreaker(
+                failure_threshold=5,
+                success_threshold=2,
+                timeout_seconds=60,
+                reset_timeout_seconds=300  # 5 minutes
+            )
+        else:
+            self.circuit_breaker = None
     
     def send_event(self, cfg: WatcherConfig, record: SpoolRecord) -> EventSendResult:
         """
@@ -90,17 +104,24 @@ class EventSender:
                 message=f"Failed to serialize request JSON: {e}"
             )
         
-        # Send the request
+        # Send the request with circuit breaker protection
         try:
             logger.debug(f"Sending {record.method} {url} with {len(request_body)} bytes")
             
-            response = self.session.request(
-                method=record.method,
-                url=url,
-                headers=headers,
-                data=request_body,
-                timeout=self.timeout_secs
-            )
+            def make_request():
+                return self.session.request(
+                    method=record.method,
+                    url=url,
+                    headers=headers,
+                    data=request_body,
+                    timeout=self.timeout_secs
+                )
+            
+            # Use circuit breaker if enabled
+            if self.circuit_breaker_enabled and self.circuit_breaker:
+                response = self.circuit_breaker.call(make_request)
+            else:
+                response = make_request()
             
             # Parse response JSON if possible
             response_json = None
@@ -112,6 +133,17 @@ class EventSender:
             
             # Classify the response
             return self._classify_response(response, response_json, record)
+            
+        except CircuitOpenError:
+            logger.warning(f"Circuit breaker is open for {url} - failing fast")
+            return EventSendResult(
+                success=False,
+                status_code=None,
+                response_json=None,
+                retriable=True,  # Circuit breaker failures are retryable
+                retry_after=None,
+                message="Circuit breaker is open - failing fast"
+            )
             
         except Timeout:
             logger.warning(f"Request timeout for {url}")
@@ -286,6 +318,17 @@ class EventSender:
             return str(response_json['error'])
         
         return "Unknown error"
+    
+    def get_circuit_breaker_stats(self) -> Optional[dict]:
+        """Get circuit breaker statistics."""
+        if self.circuit_breaker_enabled and self.circuit_breaker:
+            return self.circuit_breaker.get_stats()
+        return None
+    
+    def reset_circuit_breaker(self) -> None:
+        """Reset circuit breaker to closed state."""
+        if self.circuit_breaker_enabled and self.circuit_breaker:
+            self.circuit_breaker.reset()
     
     def close(self) -> None:
         """Close the HTTP session."""
