@@ -1,0 +1,42 @@
+--[[
+SoulLink Tracker Configuration
+===============================
+IMPORTANT: This is an EXAMPLE file. You need to:
+
+1. Copy this file to 'config.lua' in the same directory
+2. Replace the UUID placeholders with actual values from your run
+
+To get valid UUIDs:
+- Option 1: Run the configuration generator
+  python scripts/generate_lua_config.py
+  
+- Option 2: Get them from the admin panel
+  1. Start the server: python -m uvicorn src.soullink_tracker.main:app
+  2. Open http://127.0.0.1:8000/admin
+  3. Create a run and player
+  4. Copy the UUIDs shown
+]]
+
+local config = {
+    -- API Configuration
+    api_base_url = "http://127.0.0.1:8000",
+    
+    -- REPLACE THESE WITH YOUR ACTUAL UUIDs!
+    -- These are NOT valid - they're just examples of the format
+    run_id = "550e8400-e29b-41d4-a716-446655440000",     -- Example UUID format
+    player_id = "6ba7b810-9dad-11d1-80b4-00c04fd430c8",  -- Example UUID format
+    
+    -- Event Output Configuration
+    output_dir = "C:/temp/soullink_events/",  -- Windows
+    -- output_dir = "/tmp/soullink_events/",  -- Linux/Mac
+    
+    -- Script Behavior
+    poll_interval = 60,    -- Frames between checks (60 = 1 second at 60fps)
+    debug = true,          -- Enable debug logging
+    max_runtime = 3600,    -- Maximum runtime in seconds
+    
+    -- Memory Profile (US/EU)
+    memory_profile = "US"  -- Change to "EU" if using European ROM
+}
+
+return config
