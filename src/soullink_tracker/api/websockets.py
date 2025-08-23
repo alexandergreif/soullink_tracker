@@ -262,8 +262,8 @@ async def websocket_endpoint(
 
     connection = WebSocketConnection(
         websocket=websocket,
+        run_id=run_id,
         player_id=player.id,
-        connected_at=time.time(),
         last_ping=time.time(),
     )
     websocket_manager.active_connections[run_id][websocket] = connection
