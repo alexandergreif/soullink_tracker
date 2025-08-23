@@ -1,5 +1,6 @@
 """WebSocket API endpoints for real-time updates."""
 
+import asyncio
 import json
 import logging
 import time
@@ -20,8 +21,9 @@ from ..db.database import get_db
 from ..db.models import Run
 from ..auth.dependencies import get_current_player_from_token
 from ..events.websocket_manager import websocket_manager
+from ..utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('websocket')
 
 router = APIRouter(prefix="/v1/ws", tags=["websockets"])
 
@@ -84,12 +86,16 @@ async def websocket_endpoint(
             )
         )
 
-        # Wait for authentication message with timeout
+        # Wait for authentication message with timeout (increased to 10 seconds)
+        auth_timeout = 10.0  # Increase timeout for slower connections
+        max_auth_attempts = 3
+        auth_attempts = 0
         start_time = time.time()
-        while time.time() - start_time < auth_timeout and not authenticated:
+        while time.time() - start_time < auth_timeout and not authenticated and auth_attempts < max_auth_attempts:
             try:
                 # Receive authentication message with short timeout to allow checking time
-                auth_data = await websocket.receive_text()
+                auth_data = await asyncio.wait_for(websocket.receive_text(), timeout=2.0)
+                auth_attempts += 1
 
                 try:
                     auth_message = json.loads(auth_data)
@@ -211,8 +217,12 @@ async def websocket_endpoint(
                     )
                     # Continue waiting for proper auth message
 
+            except asyncio.TimeoutError:
+                # Continue waiting, don't increment attempts for timeouts
+                continue
             except Exception as recv_error:
-                logger.warning(f"WebSocket: Error receiving auth message: {recv_error}")
+                auth_attempts += 1
+                logger.warning(f"WebSocket: Error receiving auth message (attempt {auth_attempts}): {recv_error}")
                 # Continue waiting or timeout will handle it
 
         # Check if authentication was successful
@@ -254,19 +264,8 @@ async def websocket_endpoint(
         return
 
     # Connect to the WebSocket manager with player info (websocket already accepted)
-    # We need to manually register since we accepted the connection ourselves
-    if run_id not in websocket_manager.active_connections:
-        websocket_manager.active_connections[run_id] = {}
-
-    from ..events.websocket_manager import WebSocketConnection
-
-    connection = WebSocketConnection(
-        websocket=websocket,
-        run_id=run_id,
-        player_id=player.id,
-        last_ping=time.time(),
-    )
-    websocket_manager.active_connections[run_id][websocket] = connection
+    # Use the manager's register method for proper initialization
+    websocket_manager.register_existing_connection(websocket, run_id, player.id)
     logger.info(f"WebSocket connected: player {player.name} in run {run_id}")
 
     # Send welcome message after successful authentication
@@ -290,8 +289,29 @@ async def websocket_endpoint(
     try:
         # Keep the connection alive and handle incoming messages
         while True:
-            # We mainly broadcast to clients, but we can handle incoming messages too
-            data = await websocket.receive_text()
+            try:
+                # We mainly broadcast to clients, but we can handle incoming messages too
+                # Add timeout to prevent hanging connections
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # Send keep-alive ping if no message received for 30 seconds
+                await websocket.send_text(json.dumps({
+                    "type": "keep_alive",
+                    "data": {"server_time": time.time()}
+                }))
+                continue
+            except Exception as msg_error:
+                logger.warning(f"WebSocket message error for player {player.name}: {msg_error}")
+                # Try to send error response
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "data": {"message": "Message processing error", "server_time": time.time()}
+                    }))
+                except Exception:
+                    # If we can't send error response, connection is broken
+                    break
+                continue
 
             try:
                 message = json.loads(data)
@@ -513,17 +533,11 @@ async def websocket_endpoint_legacy(
 
                 elif message_type == "ping":
                     # Handle ping request - reply with pong
-                    logger.debug(f"Received ping from player {player.name}")
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "pong",
-                                "data": {
-                                    "server_time": time.time(),
-                                },
-                            }
-                        )
-                    )
+                    await websocket.send_text(json.dumps({
+                        "type": "pong",
+                        "data": {"server_time": time.time()}
+                    }))
+                    logger.debug(f"Sent pong to player {player.name}")
 
                 elif message_type == "catch_up_request":
                     # Handle catch-up request for missed events

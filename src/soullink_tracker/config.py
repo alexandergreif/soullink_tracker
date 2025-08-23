@@ -107,7 +107,7 @@ class ServerConfig:
 
     host: str = "127.0.0.1"
     port: int = 8000
-    debug: bool = False
+    debug: bool = True  # Enable debug logging by default for troubleshooting
     auto_reload: bool = False
     workers: int = 1
 

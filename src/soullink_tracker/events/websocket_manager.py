@@ -47,6 +47,10 @@ class WebSocketManager:
         self.active_connections: Dict[UUID, Dict[WebSocket, WebSocketConnection]] = {}
         # Heartbeat interval in seconds
         self.heartbeat_interval = 30
+        # Connection timeout in seconds (no pong response)
+        self.connection_timeout = 60
+        # Ping timeout in seconds (wait for pong)
+        self.ping_timeout = 10
         # Start heartbeat task
         self._heartbeat_task = None
 
@@ -87,6 +91,28 @@ class WebSocketManager:
                     },
                 }
             )
+        )
+
+    def register_existing_connection(self, websocket: WebSocket, run_id: UUID, player_id: UUID):
+        """Register an already-accepted WebSocket connection."""
+        if run_id not in self.active_connections:
+            self.active_connections[run_id] = {}
+
+        connection = WebSocketConnection(
+            websocket=websocket,
+            run_id=run_id,
+            player_id=player_id,
+            last_ping=time.time(),
+        )
+
+        self.active_connections[run_id][websocket] = connection
+
+        # Start heartbeat task if this is the first connection
+        if self._heartbeat_task is None:
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+        logger.info(
+            f"WebSocket registered: player {player_id} to run {run_id}. Total connections: {len(self.active_connections[run_id])}"
         )
 
     def disconnect(self, websocket: WebSocket, run_id: UUID):
@@ -261,19 +287,30 @@ class WebSocketManager:
             logger.error(f"Heartbeat task error: {e}")
 
     async def _send_heartbeats(self):
-        """Send ping messages to all active connections."""
+        """Send ping messages to all active connections with timeout detection."""
         current_time = time.time()
         failed_connections = []
+        timeout_connections = []
 
         for run_id, connections in self.active_connections.items():
             for websocket, connection in dict(connections).items():
+                # Check if connection has timed out (no activity for too long)
+                if current_time - connection.last_ping > self.connection_timeout:
+                    logger.warning(
+                        f"WebSocket connection timeout for player {connection.player_id} "
+                        f"(last ping: {current_time - connection.last_ping:.1f}s ago)"
+                    )
+                    timeout_connections.append((websocket, run_id))
+                    continue
+
                 try:
-                    # Send ping
+                    # Send ping with timeout info
                     ping_message = {
                         "type": "ping",
                         "data": {
                             "server_time": current_time,
                             "last_sequence": connection.last_sequence,
+                            "timeout_seconds": self.ping_timeout,
                         },
                     }
                     await websocket.send_text(json.dumps(ping_message))
@@ -285,8 +322,12 @@ class WebSocketManager:
                     )
                     failed_connections.append((websocket, run_id))
 
-        # Clean up failed connections
-        for websocket, run_id in failed_connections:
+        # Clean up failed and timed-out connections
+        for websocket, run_id in failed_connections + timeout_connections:
+            try:
+                await websocket.close(code=1001, reason="Connection timeout or ping failure")
+            except Exception:
+                pass  # Connection might already be closed
             self.disconnect(websocket, run_id)
 
     def get_connection_count(self, run_id: UUID) -> int:
