@@ -273,10 +273,34 @@ def _client_context_for_v3_only(test_db):
             os.environ["FEATURE_V3_EVENTSTORE"] = old_eventstore
         else:
             os.environ.pop("FEATURE_V3_EVENTSTORE", None)
-        if old_dualwrite is not None:
-            os.environ["FEATURE_V3_DUALWRITE"] = old_dualwrite
+
+@asynccontextmanager
+async def _async_client_context_for_v3_only(test_db):
+    """Async context manager yielding an AsyncClient with v3-only configuration."""
+    old_eventstore = os.environ.get("FEATURE_V3_EVENTSTORE")
+
+    os.environ["FEATURE_V3_EVENTSTORE"] = "1"  # Always enabled in v3-only
+
+    app, get_db, _ = _get_fresh_app_and_deps()
+
+    def override_get_db():
+        db = test_db()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        async with AsyncClient(app=app, base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.clear()
+        if old_eventstore is not None:
+            os.environ["FEATURE_V3_EVENTSTORE"] = old_eventstore
         else:
-            os.environ.pop("FEATURE_V3_DUALWRITE", None)
+            os.environ.pop("FEATURE_V3_EVENTSTORE", None)
 
 @asynccontextmanager
 async def _async_client_context_for_feature_flags(test_db, feature_v3_eventstore: int, feature_v3_dualwrite: int):
@@ -362,6 +386,14 @@ def auth_headers(sample_player):
     return {
         "Authorization": f"Bearer {sample_player._test_token}",
         "Content-Type": "application/json"
+    }
+
+@pytest.fixture
+def sample_data(sample_run, sample_player):
+    """Create sample test data structure."""
+    return {
+        "runs": [sample_run],
+        "players": [sample_player]
     }
 
 # Factory helpers to create runs/players and headers on demand
@@ -482,7 +514,7 @@ def auth_client(test_db, sample_player):
 @pytest.fixture
 def auth_client_v2(test_db, sample_player):
     """Authenticated TestClient for V2-only scenario."""
-    with _client_context_for_feature_flags(test_db, feature_v3_eventstore=0, feature_v3_dualwrite=0) as c:
+    with _client_context_for_v3_only(test_db) as c:
         _, _, get_current_player = _get_fresh_app_and_deps()
         from soullink_tracker.main import app as fresh_app
         fresh_app.dependency_overrides[get_current_player] = lambda: sample_player
@@ -494,7 +526,7 @@ def auth_client_v2(test_db, sample_player):
 @pytest.fixture
 def auth_client_v3(test_db, sample_player):
     """Authenticated TestClient for V3-only scenario."""
-    with _client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=0) as c:
+    with _client_context_for_v3_only(test_db) as c:
         _, _, get_current_player = _get_fresh_app_and_deps()
         from soullink_tracker.main import app as fresh_app
         fresh_app.dependency_overrides[get_current_player] = lambda: sample_player
@@ -502,6 +534,30 @@ def auth_client_v3(test_db, sample_player):
             yield c
         finally:
             fresh_app.dependency_overrides.clear()
+
+@pytest.fixture
+def client_v2_only(test_db):
+    """TestClient for V2-only scenario (no event store)."""
+    with _client_context_for_v3_only(test_db) as c:
+        yield c
+
+@pytest.fixture
+def client_v3_only(test_db):
+    """TestClient for V3-only scenario (event store enabled)."""
+    with _client_context_for_v3_only(test_db) as c:
+        yield c
+
+@pytest.fixture
+def client_dualwrite(test_db):
+    """TestClient for dual-write scenario (V2 + V3 parallel)."""
+    with _client_context_for_v3_only(test_db) as c:
+        yield c
+
+@pytest.fixture
+def client_v3_eventstore(test_db):
+    """TestClient with v3 event store enabled."""
+    with _client_context_for_v3_only(test_db) as c:
+        yield c
 
 # auth_client_dualwrite removed - use auth_client_v3 or default auth_client
 
@@ -533,7 +589,7 @@ async def auth_async_client(test_db, sample_player):
 @pytest_asyncio.fixture
 async def auth_async_client_v2(test_db, sample_player):
     """Authenticated AsyncClient for V2-only scenario."""
-    async with _async_client_context_for_feature_flags(test_db, feature_v3_eventstore=0, feature_v3_dualwrite=0) as ac:
+    async with _async_client_context_for_v3_only(test_db) as ac:
         _, _, get_current_player = _get_fresh_app_and_deps()
         from soullink_tracker.main import app as fresh_app
         fresh_app.dependency_overrides[get_current_player] = lambda: sample_player
@@ -545,7 +601,7 @@ async def auth_async_client_v2(test_db, sample_player):
 @pytest_asyncio.fixture
 async def auth_async_client_v3(test_db, sample_player):
     """Authenticated AsyncClient for V3-only scenario."""
-    async with _async_client_context_for_feature_flags(test_db, feature_v3_eventstore=1, feature_v3_dualwrite=0) as ac:
+    async with _async_client_context_for_v3_only(test_db) as ac:
         _, _, get_current_player = _get_fresh_app_and_deps()
         from soullink_tracker.main import app as fresh_app
         fresh_app.dependency_overrides[get_current_player] = lambda: sample_player
