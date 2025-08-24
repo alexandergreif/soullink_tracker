@@ -1,7 +1,7 @@
 """Pydantic models for API request/response validation."""
 
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator  # type: ignore
@@ -149,7 +149,7 @@ class EventEncounter(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
 
-    type: str = Field("encounter", description="Event type")
+    type: Literal["encounter"] = Field("encounter", description="Event type")
     run_id: UUID
     player_id: UUID
     time: datetime
@@ -213,7 +213,7 @@ class EventCatchResult(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    type: str = Field("catch_result", description="Event type")
+    type: Literal["catch_result"] = Field("catch_result", description="Event type")
     run_id: UUID
     player_id: UUID
     time: datetime
@@ -274,7 +274,7 @@ class EventCatchResult(BaseModel):
 class EventFaint(BaseModel):
     """Schema for faint event."""
 
-    type: str = Field("faint", description="Event type")
+    type: Literal["faint"] = Field("faint", description="Event type")
     run_id: UUID
     player_id: UUID
     time: datetime
@@ -282,6 +282,33 @@ class EventFaint(BaseModel):
     party_index: Optional[int] = Field(
         None, description="Position in party (0-5), optional for backward compatibility"
     )
+
+
+class EventTest(BaseModel):
+    """Schema for test event used for connectivity verification."""
+
+    type: Literal["test"] = Field("test", description="Event type")
+    run_id: UUID
+    player_id: UUID
+    time: datetime
+    message: Optional[str] = Field(None, description="Test message", max_length=1000)
+    event_version: Optional[str] = Field(None, description="Event version", max_length=20)
+    
+    @model_validator(mode="after")
+    def validate_timestamp(self):
+        """Validate timestamp is not too far in future or past."""
+        from datetime import timedelta
+        now = datetime.now(timezone.utc) if self.time.tzinfo else datetime.now()
+        
+        # Allow 5 minutes in future for clock skew
+        if self.time > now + timedelta(minutes=5):
+            raise ValueError("Timestamp too far in future")
+        
+        # Reject very old timestamps (more than 7 days)
+        if self.time < now - timedelta(days=7):
+            raise ValueError("Timestamp too old")
+        
+        return self
 
 
 class EventResponse(BaseResponse):

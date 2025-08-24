@@ -1,7 +1,7 @@
 """Abstract repository interfaces for data access layer."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 

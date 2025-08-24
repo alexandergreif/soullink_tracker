@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from ..auth.rate_limiter import GlobalRateLimiter, RateLimitConfig
-from ..utils.logging_config import get_logger, log_exception
+from ..utils.logging_config import get_logger
 
 logger = get_logger('middleware')
 

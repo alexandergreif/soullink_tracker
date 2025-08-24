@@ -6,7 +6,6 @@ violations (which indicate successful race condition prevention) and unexpected
 integrity errors that should be treated as actual failures.
 """
 
-import logging
 from enum import Enum
 from typing import Optional, Dict, Any
 from sqlalchemy.exc import IntegrityError  # type: ignore

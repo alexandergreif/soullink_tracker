@@ -10,10 +10,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from ..utils.logging_config import get_logger, log_exception
-
-logger = get_logger('projection')
-
+from ..utils.logging_config import get_logger
 from .integrity_policy import (
     ExpectedIntegrityTag,
 )
@@ -22,7 +19,6 @@ from .savepoints import (
     handle_projection_integrity_error,
     GracefulProjectionError,
 )
-
 from ..domain.events import (
     EventEnvelope,
     EncounterEvent,
@@ -43,6 +39,8 @@ from ..domain.rules import (
 )
 from ..db.models import RouteProgress, Blocklist, PartyStatus
 from ..core.enums import EncounterStatus
+
+logger = get_logger('projection')
 
 
 class ProjectionError(Exception):
@@ -711,7 +709,6 @@ class ProjectionQueries:
                     route_progress.last_update = timestamp
 
                 # Log the race condition resolution
-                import logging
 
                 logger = get_logger(__name__)
                 logger.info(

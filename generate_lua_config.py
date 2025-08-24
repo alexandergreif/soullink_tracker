@@ -61,15 +61,36 @@ return {{
             return False
     
     def list_runs_and_players(self) -> list:
-        """List all available runs and players from database"""
+        """List all available runs and players from database with edge case handling"""
         if not os.path.exists(self.db_path):
             print(f"❌ Database not found at {self.db_path}")
             print("   Make sure the server has been started at least once.")
             return []
         
+        # Check if file is actually a database
+        if os.path.isdir(self.db_path):
+            print(f"❌ {self.db_path} is a directory, not a database file")
+            return []
+        
+        # Check file is readable
+        if not os.access(self.db_path, os.R_OK):
+            print(f"❌ Cannot read database at {self.db_path} - permission denied")
+            return []
+        
+        conn = None
         try:
-            conn = sqlite3.connect(self.db_path)
+            # Use timeout to prevent hanging on locked database
+            conn = sqlite3.connect(self.db_path, timeout=5.0)
+            conn.row_factory = None  # Return tuples, not Row objects
             cursor = conn.cursor()
+            
+            # First check if tables exist
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('runs', 'players')")
+            tables = cursor.fetchall()
+            if len(tables) < 2:
+                print("❌ Database is missing required tables (runs, players)")
+                print("   Database may be corrupted or from an incompatible version")
+                return []
             
             query = '''
             SELECT r.id, r.name, p.id, p.name, p.game, p.region
@@ -79,11 +100,38 @@ return {{
             '''
             
             results = cursor.execute(query).fetchall()
-            conn.close()
-            return results
+            
+            # Validate results have expected structure
+            valid_results = []
+            for row in results:
+                if len(row) == 6:
+                    # Validate UUIDs
+                    if self.validate_uuid(row[0]) and self.validate_uuid(row[2]):
+                        valid_results.append(row)
+                    else:
+                        print(f"⚠️  Skipping invalid entry with malformed UUIDs")
+            
+            return valid_results
+            
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                print(f"❌ Database is locked - another process may be using it")
+                print("   Please close other applications accessing the database")
+            elif "corrupt" in str(e).lower():
+                print(f"❌ Database appears to be corrupted")
+                print("   You may need to restore from a backup or recreate it")
+            else:
+                print(f"❌ Database operation error: {e}")
+            return []
         except sqlite3.Error as e:
             print(f"❌ Database error: {e}")
             return []
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass  # Best effort close
     
     def interactive_setup(self) -> Tuple[str, str]:
         """Interactive wizard to select run and player"""

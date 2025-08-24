@@ -35,13 +35,17 @@ class TestEventsAPI:
         db.add(player)
         db.flush()
         
-        # Create species
-        species = Species(id=1, name="Pidgey", family_id=16)
-        db.add(species)
+        # Create or get existing species
+        species = db.query(Species).filter(Species.id == 1).first()
+        if not species:
+            species = Species(id=1, name="Pidgey", family_id=16)
+            db.add(species)
         
-        # Create route
-        route = Route(id=31, label="Route 31", region="EU")
-        db.add(route)
+        # Create or get existing route
+        route = db.query(Route).filter(Route.id == 31).first()
+        if not route:
+            route = Route(id=31, label="Route 31", region="EU")
+            db.add(route)
         
         db.commit()
         db.refresh(run)
@@ -426,3 +430,163 @@ class TestEventsAPI:
         if "event_id" in data:
             from uuid import UUID
             UUID(data["event_id"])
+
+    def test_test_event_success(self, client: TestClient, sample_data):
+        """Test that test events are processed successfully."""
+        # Create test event
+        test_event = {
+            "type": "test",
+            "run_id": str(sample_data["run"].id),
+            "player_id": str(sample_data["player"].id),
+            "time": datetime.now(timezone.utc).isoformat(),
+            "message": "Connectivity test",
+            "event_version": "v3"
+        }
+        
+        response = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": str(uuid4())
+            }
+        )
+        
+        assert response.status_code == 202
+        data = response.json()
+        assert data["message"] == "Test event acknowledged"
+        assert "test_event_logged" in data["applied_rules"]
+        assert data["event_id"] is not None
+        
+    def test_test_event_without_message(self, client: TestClient, sample_data):
+        """Test that test events work without optional message field."""
+        # Create test event without message
+        test_event = {
+            "type": "test",
+            "run_id": str(run_id),
+            "player_id": str(player_id),
+            "time": datetime.now(timezone.utc).isoformat()
+        }
+        
+        response = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": str(uuid4())
+            }
+        )
+        
+        assert response.status_code == 202
+        data = response.json()
+        assert data["message"] == "Test event acknowledged"
+        
+    def test_test_event_timestamp_validation(self, client: TestClient, sample_data):
+        """Test that test events validate timestamps correctly."""
+        from datetime import timedelta
+        
+        # Test with future timestamp (should fail)
+        future_time = datetime.now(timezone.utc) + timedelta(minutes=10)
+        test_event = {
+            "type": "test",
+            "run_id": str(run_id),
+            "player_id": str(player_id),
+            "time": future_time.isoformat(),
+            "message": "Future test"
+        }
+        
+        response = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": str(uuid4())
+            }
+        )
+        
+        assert response.status_code == 422
+        
+        # Test with very old timestamp (should fail)
+        old_time = datetime.now(timezone.utc) - timedelta(days=10)
+        test_event["time"] = old_time.isoformat()
+        test_event["message"] = "Old test"
+        
+        response = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": str(uuid4())
+            }
+        )
+        
+        assert response.status_code == 422
+        
+    def test_test_event_message_length_limit(self, client: TestClient, sample_data):
+        """Test that test event message has length limit."""
+        run_id, player_id, _, token = sample_data
+        
+        # Create test event with very long message
+        long_message = "x" * 1001  # Exceeds 1000 char limit
+        test_event = {
+            "type": "test",
+            "run_id": str(run_id),
+            "player_id": str(player_id),
+            "time": datetime.now(timezone.utc).isoformat(),
+            "message": long_message
+        }
+        
+        response = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": str(uuid4())
+            }
+        )
+        
+        assert response.status_code == 422
+        
+    def test_test_event_idempotency(self, client: TestClient, sample_data):
+        """Test that test events respect idempotency keys."""
+        run_id, player_id, _, token = sample_data
+        
+        # Create test event
+        test_event = {
+            "type": "test",
+            "run_id": str(run_id),
+            "player_id": str(player_id),
+            "time": datetime.now(timezone.utc).isoformat(),
+            "message": "Idempotency test"
+        }
+        
+        idempotency_key = str(uuid4())
+        
+        # First request
+        response1 = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": idempotency_key
+            }
+        )
+        
+        assert response1.status_code == 202
+        data1 = response1.json()
+        
+        # Second request with same idempotency key
+        response2 = client.post(
+            "/v1/events",
+            json=test_event,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": idempotency_key
+            }
+        )
+        
+        assert response2.status_code == 202
+        data2 = response2.json()
+        
+        # Should return same response
+        assert data1 == data2

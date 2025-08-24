@@ -197,11 +197,30 @@ class SoulLinkConfig:
 
 
 class ConfigManager:
-    """Manages configuration loading, saving, and auto-detection."""
+    """Manages configuration loading, saving, and auto-detection.
+
+    Implements singleton pattern to ensure configuration is loaded only once
+    and JWT secrets remain stable across the application lifetime.
+    """
+
+    _instance: Optional["ConfigManager"] = None
+    _initialized: bool = False
+
+    def __new__(cls) -> "ConfigManager":
+        """Ensure only one instance of ConfigManager exists."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
+        """Initialize the ConfigManager only once."""
+        if ConfigManager._initialized:
+            return
+
         self.config_file: Optional[Path] = None
         self.config: Optional[SoulLinkConfig] = None
+        self._config_loaded: bool = False
+        ConfigManager._initialized = True
 
     def detect_environment(self) -> Dict[str, Any]:
         """Detect the current environment and return environment info."""
@@ -245,8 +264,26 @@ class ConfigManager:
         config_dir.mkdir(exist_ok=True)
         return config_dir / "config.json"
 
+    def _load_existing_jwt_secret(self) -> Optional[str]:
+        """Try to load JWT secret from existing config file.
+
+        This prevents JWT secret regeneration when config is recreated.
+        """
+        try:
+            config_path = self.get_config_file_path()
+            if config_path.exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("app", {}).get("jwt_secret_key")
+        except Exception as e:
+            logging.debug(f"Could not load existing JWT secret: {e}")
+        return None
+
     def create_default_config(self) -> SoulLinkConfig:
-        """Create default configuration with auto-detected values."""
+        """Create default configuration with auto-detected values.
+
+        JWT secret is generated once and persisted to config file.
+        """
         env_info = self.detect_environment()
 
         # Check for database URL override
@@ -255,9 +292,17 @@ class ConfigManager:
         # Generate or get JWT secret key from environment
         jwt_secret_key = os.getenv("SOULLINK_JWT_SECRET_KEY")
         if not jwt_secret_key:
-            # Generate cryptographically secure 64-byte secret
-            jwt_secret_key = secrets.token_urlsafe(64)  # 512-bit key
-            logging.info("Generated new JWT secret key (not from environment)")
+            # Check if we have a persisted secret in an existing config file
+            existing_secret = self._load_existing_jwt_secret()
+            if existing_secret:
+                jwt_secret_key = existing_secret
+                logging.info(
+                    "Using existing JWT secret key from previous configuration"
+                )
+            else:
+                # Generate cryptographically secure 64-byte secret
+                jwt_secret_key = secrets.token_urlsafe(64)  # 512-bit key
+                logging.info("Generated new JWT secret key (first time initialization)")
         else:
             logging.info(
                 "Using JWT secret key from SOULLINK_JWT_SECRET_KEY environment variable"
@@ -293,7 +338,15 @@ class ConfigManager:
         return config
 
     def load_config(self) -> SoulLinkConfig:
-        """Load configuration from file or create default."""
+        """Load configuration from file or create default.
+
+        This method ensures configuration is loaded only once per process lifetime.
+        Subsequent calls return the cached configuration.
+        """
+        # Return cached config if already loaded
+        if self._config_loaded and self.config is not None:
+            return self.config
+
         self.config_file = self.get_config_file_path()
 
         if self.config_file.exists():
@@ -321,6 +374,16 @@ class ConfigManager:
                         data["database"] = {}
                     data["database"]["url"] = os.getenv("SOULLINK_DATABASE_URL")
 
+                # Override JWT secret if environment variable is set
+                jwt_secret_env = os.getenv("SOULLINK_JWT_SECRET_KEY")
+                if jwt_secret_env:
+                    if "app" not in data:
+                        data["app"] = {}
+                    data["app"]["jwt_secret_key"] = jwt_secret_env
+                    logging.info(
+                        "Using JWT secret key from SOULLINK_JWT_SECRET_KEY environment variable"
+                    )
+
                 self.config = SoulLinkConfig.from_dict(data)
                 logging.info(f"Loaded configuration from {self.config_file}")
 
@@ -331,11 +394,15 @@ class ConfigManager:
         else:
             logging.info("No config file found, creating default configuration")
             self.config = self.create_default_config()
+            # Save the new configuration to persist JWT secret
+            self.save_config()
 
+        # Mark configuration as loaded to prevent reloading
+        self._config_loaded = True
         return self.config
 
     def save_config(self, config: Optional[SoulLinkConfig] = None) -> bool:
-        """Save configuration to file."""
+        """Save configuration to file with atomic write operation and edge case handling."""
         if config is None:
             config = self.config
 
@@ -347,11 +414,87 @@ class ConfigManager:
             if self.config_file is None:
                 self.config_file = self.get_config_file_path()
 
-            with open(self.config_file, "w", encoding="utf-8") as f:
-                json.dump(config.to_dict(), f, indent=2, ensure_ascii=False)
+            # Validate path before writing
+            if self.config_file.exists() and self.config_file.is_dir():
+                logging.error(f"Config path {self.config_file} is a directory, not a file")
+                return False
+            
+            # Check for symlink attacks
+            if self.config_file.exists() and self.config_file.is_symlink():
+                logging.warning(f"Config path {self.config_file} is a symlink - resolving real path")
+                self.config_file = self.config_file.resolve()
+            
+            # Ensure parent directory exists with proper permissions
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Check disk space (require at least 1MB free)
+            import shutil
+            stat = shutil.disk_usage(self.config_file.parent)
+            if stat.free < 1024 * 1024:  # 1MB
+                logging.error(f"Insufficient disk space to save config (only {stat.free} bytes free)")
+                return False
 
-            logging.info(f"Saved configuration to {self.config_file}")
-            return True
+            # Write to temporary file first for atomic operation
+            import tempfile
+
+            temp_fd, temp_path = tempfile.mkstemp(
+                dir=self.config_file.parent, suffix=".tmp", prefix="config_"
+            )
+
+            try:
+                # Add file locking for concurrent access protection
+                with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                    # Platform-specific file locking
+                    if platform.system() != "Windows":
+                        try:
+                            import fcntl
+                            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        except ImportError:
+                            pass  # fcntl not available, skip locking
+                        except IOError:
+                            logging.warning("Config file is locked by another process - waiting")
+                            import time
+                            time.sleep(0.1)
+                            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    
+                    # Validate config data before writing
+                    config_dict = config.to_dict()
+                    if not config_dict:
+                        raise ValueError("Configuration data is empty")
+                    
+                    # Ensure JWT secret is not exposed in logs
+                    safe_config = config_dict.copy()
+                    if "app" in safe_config and "jwt_secret_key" in safe_config["app"]:
+                        safe_config["app"]["jwt_secret_key"] = "***REDACTED***"
+                    logging.debug(f"Writing config (without secrets): {safe_config}")
+                    
+                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+                # Atomic rename (works on Unix, close-enough on Windows)
+                # Create backup of existing config if it exists
+                if self.config_file.exists():
+                    backup_path = self.config_file.with_suffix(".json.backup")
+                    try:
+                        shutil.copy2(str(self.config_file), str(backup_path))
+                        logging.debug(f"Created backup at {backup_path}")
+                    except Exception as e:
+                        logging.warning(f"Could not create backup: {e}")
+                
+                # Perform atomic move
+                shutil.move(temp_path, str(self.config_file))
+
+                logging.info(f"Saved configuration to {self.config_file}")
+                return True
+
+            except Exception as e:
+                # Clean up temp file on error
+                if os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except Exception:
+                        pass  # Best effort cleanup
+                logging.error(f"Error during config save: {e}")
+                raise
 
         except Exception as e:
             logging.error(f"Failed to save config to {self.config_file}: {e}")
@@ -523,7 +666,11 @@ def get_rate_limit_config() -> "RateLimitConfig":
 
 
 def get_config() -> SoulLinkConfig:
-    """Get the current configuration."""
+    """Get the current configuration.
+
+    This always returns the same configuration instance due to singleton pattern.
+    Configuration is loaded once on first access and cached for the process lifetime.
+    """
     return config_manager.load_config()
 
 

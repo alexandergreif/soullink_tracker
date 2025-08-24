@@ -95,8 +95,22 @@
       "Bash(PYTHONPATH=src timeout 60 python3 -m pytest --no-cov tests/unit/ -q --tb=no)",
       "Bash(PYTHONPATH=src python3 -m pytest --no-cov tests/unit/test_models.py tests/unit/test_repositories.py tests/unit/test_auth.py -q)",
       "Read(//Users/alexandergreif/Downloads/logs (1)/**)",
-      "Read(//Users/alexandergreif/Downloads/**)"
+      "Read(//Users/alexandergreif/Downloads/**)",
+      "Read(//Users/alexandergreif/Downloads/**)",
+      "mcp__archon__delete_task",
+      "Bash(PYTHONPATH=src python -m pytest tests/unit/test_api_events.py::TestEventsAPI::test_test_event_success -xvs --no-cov)",
+      "Bash(PYTHONPATH=src python -m pytest tests/unit/test_api_events.py -k \"test_test_event\" -xvs --no-cov)",
+      "Bash(pip install:*)",
+      "WebFetch(domain:www.cul-masten.de)",
+      "WebSearch",
+      "Bash(PYTHONPATH=src python3 -m pytest tests/unit/test_config_singleton.py -xvs)",
+      "Bash(ruff format:*)",
+      "Bash(chmod:*)",
+      "Bash(PYTHONPATH=src python3 -m pytest tests/unit/test_api_events.py::TestEventsAPI::test_test_event_success -xvs --no-cov)"
     ],
-    "deny": []
+    "deny": [],
+    "additionalDirectories": [
+      "/Users/alexandergreif/Downloads"
+    ]
   }
 }

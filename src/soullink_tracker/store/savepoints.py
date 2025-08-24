@@ -6,7 +6,6 @@ might trigger expected IntegrityError exceptions, preventing them from
 poisoning the outer transaction.
 """
 
-import logging
 from contextlib import contextmanager
 from typing import Set, Dict, Any, Optional
 from sqlalchemy.orm import Session
