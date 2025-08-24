@@ -74,6 +74,18 @@ local function load_config()
                     log("⚠️  output_dir missing, setting default")
                     config.output_dir = "C:/Users/" .. os.getenv("USERNAME") .. "/AppData/Local/Temp/soullink_events/"
                 end
+                if not config.max_runtime then
+                    log("⚠️  max_runtime missing, setting default to 3600 seconds (1 hour)")
+                    config.max_runtime = 3600
+                end
+                if not config.debug then
+                    log("⚠️  debug missing, setting default to false")
+                    config.debug = false
+                end
+                if not config.memory_profile then
+                    log("⚠️  memory_profile missing, setting default to US")
+                    config.memory_profile = "US"
+                end
                 
                 return config
             else
@@ -443,10 +455,12 @@ local function monitor_game()
     
     -- Check for maximum runtime
     local current_time = os.time()
-    if current_time - game_state.startup_time > CONFIG.max_runtime then
-        log("Maximum runtime reached, stopping script")
-        game_state.script_running = false
-        return
+    if CONFIG.max_runtime and CONFIG.max_runtime > 0 then
+        if current_time - game_state.startup_time > CONFIG.max_runtime then
+            log("Maximum runtime reached, stopping script")
+            game_state.script_running = false
+            return
+        end
     end
     
     -- Try monitoring with error handling
@@ -603,9 +617,12 @@ if execution_mode == "loop" or execution_mode == "auto" then
         end
         
         -- Safety check - stop if runtime exceeded
-        if os.time() - game_state.startup_time > CONFIG.max_runtime then
-            log("Maximum runtime reached, stopping")
-            break
+        if CONFIG.max_runtime and CONFIG.max_runtime > 0 then
+            local runtime = os.time() - game_state.startup_time
+            if runtime > CONFIG.max_runtime then
+                log("Maximum runtime reached (" .. runtime .. "s > " .. CONFIG.max_runtime .. "s), stopping")
+                break
+            end
         end
     end
 end
