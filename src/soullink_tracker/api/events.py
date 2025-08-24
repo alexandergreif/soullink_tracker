@@ -369,9 +369,9 @@ async def _broadcast_event_update(
 
     except Exception as e:
         # Log error but don't fail the event processing
-        import logging
+        from ..utils.logging_config import get_logger
 
-        logger = logging.getLogger(__name__)
+        logger = get_logger(__name__)
         logger.error(
             f"Failed to broadcast WebSocket update for {event.type} event: {e}"
         )

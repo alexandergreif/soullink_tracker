@@ -9,6 +9,8 @@ from uuid import UUID
 from datetime import datetime
 import logging
 
+from ..utils.logging_config import get_logger
+
 from .enums import EncounterStatus, EncounterMethod
 
 # Legacy model imports removed in v3-only architecture
@@ -27,7 +29,7 @@ class RulesEngine:
 
     def __init__(self, repos: RepositoryContainer):
         self.repos = repos
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self._state_cache: Dict[UUID, RunState] = {}
 
     async def _get_or_build_state(self, run_id: UUID) -> RunState:
