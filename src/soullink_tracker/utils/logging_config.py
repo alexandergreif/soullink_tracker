@@ -172,23 +172,32 @@ class ComponentLogger:
             cls.initialize()
             
         # Handle module paths - extract component from __name__ format
+        original_component = component
         if 'soullink_tracker.' in component:
             # Extract component from module path
             parts = component.split('.')
             if len(parts) >= 3:
-                # soullink_tracker.api.websockets -> websocket
+                # More comprehensive mapping
                 if parts[2] == 'websockets':
                     component = 'websocket'
+                elif parts[2] in ['admin', 'events', 'queries'] or parts[1] == 'api':
+                    component = 'api'
                 elif parts[1] == 'auth':
                     component = 'auth'
-                elif parts[1] == 'api':
-                    component = 'api'
-                elif parts[1] == 'db' or 'store' in parts:
+                elif parts[1] in ['db', 'store'] or any(x in parts for x in ['database', 'models', 'projections']):
                     component = 'database'
                 elif parts[1] == 'events':
                     component = 'events'
+                elif parts[1] == 'core' and 'rules' in parts:
+                    component = 'events'  # Rules engine is part of event processing
+                elif parts[-1] in ['launcher', 'user_launcher', 'portable_logger']:
+                    component = 'launcher'
                 else:
+                    # Default to second level (soullink_tracker.X.Y -> X)
                     component = parts[1] if len(parts) > 1 else 'main'
+            elif len(parts) >= 2:
+                # soullink_tracker.main -> main
+                component = parts[1]
             
         # Map component to logger
         if component in cls._loggers:
@@ -198,18 +207,28 @@ class ComponentLogger:
             cls._create_component_logger(component)
             logger = cls._loggers.get(component, cls._loggers.get('main'))
             
-        # Add unified handler to component logger instead of using DualLogger
+        # Ensure this logger writes to unified.log by copying its handler
         if 'unified' in cls._loggers and component != 'unified':
             unified_logger = cls._loggers['unified']
-            # Add unified handler to component logger if not already present
+            # Find the unified handler
             unified_handler = None
             for handler in unified_logger.handlers:
                 if hasattr(handler, 'baseFilename') and 'unified.log' in handler.baseFilename:
                     unified_handler = handler
                     break
             
-            if unified_handler and unified_handler not in logger.handlers:
-                logger.addHandler(unified_handler)
+            # Add unified handler to this component logger if not already present
+            if unified_handler:
+                handler_exists = False
+                for existing_handler in logger.handlers:
+                    if (hasattr(existing_handler, 'baseFilename') and
+                        hasattr(unified_handler, 'baseFilename') and
+                        existing_handler.baseFilename == unified_handler.baseFilename):
+                        handler_exists = True
+                        break
+                
+                if not handler_exists:
+                    logger.addHandler(unified_handler)
             
         return logger
     
@@ -231,7 +250,7 @@ class ComponentLogger:
         level = logging.DEBUG if config.server.debug else logging.INFO
         logger.setLevel(level)
         
-        # File handler with rotation
+        # Create component-specific file handler
         log_file = cls._log_dir / f'{component}.log'
         file_handler = logging.handlers.RotatingFileHandler(
             log_file,
@@ -248,7 +267,7 @@ class ComponentLogger:
         file_handler.setFormatter(detailed_formatter)
         logger.addHandler(file_handler)
         
-        # Add unified handler if available
+        # Add unified handler for cross-component visibility
         if 'unified' in cls._loggers:
             unified_logger = cls._loggers['unified']
             # Find the unified handler
@@ -258,7 +277,7 @@ class ComponentLogger:
                     unified_handler = handler
                     break
             
-            if unified_handler and unified_handler not in logger.handlers:
+            if unified_handler:
                 logger.addHandler(unified_handler)
         
         # Store logger reference

@@ -136,8 +136,9 @@ async def startup_event():
     # Critical security validation - must be done first
     from .config import validate_startup_security, config_manager
     import logging
+    from .utils.logging_config import get_logger
 
-    logger = logging.getLogger(__name__)
+    logger = get_logger(__name__)
 
     # SECURITY: Validate critical security configuration before starting
     try:

@@ -107,12 +107,16 @@ def create_run(
     have players added to it via the player creation endpoint.
     """
     try:
+        logger.info(f"Creating new run: {run_data.name}")
+        logger.debug(f"Run creation request from {request.client.host if request.client else 'unknown'}")
+        
         # Hash the password if provided
         password_salt = None
         password_hash = None
-        if hasattr(run_data, "password") and run_data.password:
+        has_password = hasattr(run_data, "password") and run_data.password
+        if has_password:
             from ..auth.security import hash_password
-
+            logger.debug("Run has password protection - hashing password")
             password_salt, password_hash = hash_password(run_data.password)
 
         # Create new run
@@ -126,7 +130,8 @@ def create_run(
         db.add(new_run)
         db.commit()
         db.refresh(new_run)
-
+        
+        logger.info(f"Successfully created run {new_run.id} ({new_run.name}) with password protection: {has_password}")
         return RunResponse.model_validate(new_run)
 
     except Exception as e:
@@ -194,13 +199,20 @@ def create_player(
         )
 
     try:
+        logger.info(f"Creating new player '{player_data.name}' in run {run_id} (game: {player_data.game}, region: {player_data.region})")
+        logger.debug(f"Player creation request from {request.client.host if request.client else 'unknown'}")
+        
         # Generate secure token
         token, token_hash = Player.generate_token()
+        logger.debug(f"Generated secure token for player {player_data.name}")
 
         # Use the create_with_token method from the model
         new_player, token = Player.create_with_token(
             db, run_id, player_data.name, player_data.game, player_data.region
         )
+        
+        logger.info(f"Successfully created player {new_player.id} ({new_player.name}) in run {run_id}")
+        logger.debug(f"Player {new_player.name} token will be shown once and stored as hash")
 
         # Return player data with the one-time token
         response_data = {

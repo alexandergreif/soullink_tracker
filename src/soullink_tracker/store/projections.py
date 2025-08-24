@@ -465,9 +465,9 @@ class ProjectionEngine:
                     route_progress.last_update = timestamp
 
                 # Log the race condition resolution
-                import logging
+                from ..utils.logging_config import get_logger
 
-                logger = logging.getLogger(__name__)
+                logger = get_logger(__name__)
                 logger.info(
                     f"First encounter race condition on route {route_id}: "
                     f"Player {player_id} lost to another player, treating as dupe-skip"
@@ -713,7 +713,7 @@ class ProjectionQueries:
                 # Log the race condition resolution
                 import logging
 
-                logger = logging.getLogger(__name__)
+                logger = get_logger(__name__)
                 logger.info(
                     f"First encounter race condition on route {route_id}: "
                     f"Player {player_id} lost to another player, treating as dupe-skip"
