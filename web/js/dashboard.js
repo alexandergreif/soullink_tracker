@@ -1148,9 +1148,10 @@ class SoulLinkDashboard {
         
         // Load available runs
         try {
-            const response = await fetch(`${this.apiUrl}/v1/admin/runs`);
+            const response = await fetch(`${this.apiUrl}/v1/runs`);
             if (response.ok) {
-                const runs = await response.json();
+                const data = await response.json();
+                const runs = data.runs || data; // Handle both RunListResponse format and direct array
                 
                 runSelect.innerHTML = '<option value="">Select a run...</option>';
                 runs.forEach(run => {
@@ -1164,11 +1165,18 @@ class SoulLinkDashboard {
                     runSelect.appendChild(option);
                 });
             } else {
-                runSelect.innerHTML = '<option value="">Failed to load runs</option>';
+                console.error('Failed to load runs:', response.status, response.statusText);
+                let errorMsg = 'Failed to load runs';
+                if (response.status === 403) {
+                    errorMsg = 'Authentication failed - please login';
+                } else if (response.status === 401) {
+                    errorMsg = 'Session expired - please login again';
+                }
+                runSelect.innerHTML = `<option value="">${errorMsg}</option>`;
             }
         } catch (error) {
             console.error('Error loading runs:', error);
-            runSelect.innerHTML = '<option value="">Error loading runs</option>';
+            runSelect.innerHTML = '<option value="">Network error - check connection</option>';
         }
         
         modal.classList.add('show');

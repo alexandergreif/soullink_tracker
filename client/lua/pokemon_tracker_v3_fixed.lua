@@ -22,30 +22,79 @@ local function log(message)
     print("[" .. timestamp .. "] [SoulLink V3] " .. message)
 end
 
--- Load configuration from external file
+-- Load configuration from external file with multiple path attempts
 local function load_config()
-    local config_file = "client/lua/config.lua"
-    local success, config = pcall(dofile, config_file)
+    -- Try multiple potential config file locations
+    local config_paths = {
+        "config.lua",                    -- Same directory as script
+        "client/lua/config.lua",         -- From project root
+        "./config.lua",                  -- Current working directory
+        "../config.lua",                 -- Parent directory
+        "lua/config.lua",                -- From client directory
+        -- Absolute paths (will be constructed dynamically)
+    }
     
-    if success and config then
-        log("Configuration loaded from " .. config_file)
-        return config
-    else
-        log_error("Failed to load config from " .. config_file .. ", using defaults")
-        log_error("Please copy config_template.lua to config.lua and fill in your values")
-        
-        -- Default configuration (will cause 422 errors without proper UUIDs)
-        return {
-            api_base_url = "http://127.0.0.1:8000",
-            run_id = "MISSING_RUN_ID",
-            player_id = "MISSING_PLAYER_ID",
-            output_dir = "C:/Users/Alex/AppData/Local/Temp/soullink_events/",
-            poll_interval = 60,
-            debug = true,
-            max_runtime = 3600,
-            memory_profile = "US"
-        }
+    -- Try to construct absolute paths if possible
+    local script_dir = debug.getinfo(1).source
+    if script_dir and script_dir:match("^@(.+)") then
+        script_dir = script_dir:match("^@(.+)"):gsub("[^/\\]*$", "")
+        table.insert(config_paths, script_dir .. "config.lua")
+        table.insert(config_paths, script_dir .. "../config.lua")
     end
+    
+    log("Attempting to load configuration from multiple locations...")
+    
+    for i, config_path in ipairs(config_paths) do
+        log("Trying config path: " .. config_path)
+        
+        local success, config = pcall(dofile, config_path)
+        
+        if success and config and type(config) == "table" then
+            -- Validate that the config has required fields
+            if config.run_id and config.player_id and
+               config.run_id ~= "REPLACE_WITH_YOUR_RUN_ID" and
+               config.player_id ~= "REPLACE_WITH_YOUR_PLAYER_ID" then
+                log("✅ Configuration loaded successfully from: " .. config_path)
+                log("📍 run_id: " .. config.run_id)
+                log("📍 player_id: " .. config.player_id)
+                log("📍 API URL: " .. (config.api_base_url or "default"))
+                return config
+            else
+                log("⚠️  Config file found but contains placeholder values: " .. config_path)
+            end
+        else
+            local error_msg = success and "not a table" or tostring(config)
+            log("❌ Failed to load from " .. config_path .. ": " .. error_msg)
+        end
+    end
+    
+    log_error("=====================================")
+    log_error("⚠️  CONFIGURATION LOADING FAILED  ⚠️")
+    log_error("=====================================")
+    log_error("Tried all possible config.lua locations:")
+    for i, path in ipairs(config_paths) do
+        log_error("  " .. i .. ". " .. path)
+    end
+    log_error("")
+    log_error("SOLUTIONS:")
+    log_error("1. Make sure config.lua exists in the same directory as this script")
+    log_error("2. Copy config_template.lua to config.lua and fill in your values")
+    log_error("3. Get UUIDs from: http://127.0.0.1:8000/admin")
+    log_error("4. Ensure config.lua returns a table with run_id and player_id")
+    log_error("")
+    log_error("Using fallback configuration - events will fail with 422 errors!")
+    
+    -- Default configuration (will cause 422 errors without proper UUIDs)
+    return {
+        api_base_url = "http://127.0.0.1:8000",
+        run_id = "MISSING_RUN_ID",
+        player_id = "MISSING_PLAYER_ID",
+        output_dir = "C:/Users/Alex/AppData/Local/Temp/soullink_events/",
+        poll_interval = 60,
+        debug = true,
+        max_runtime = 3600,
+        memory_profile = "US"
+    }
 end
 
 -- Load configuration
@@ -450,17 +499,37 @@ local function initialize()
 }]], CONFIG.run_id, CONFIG.player_id, get_current_time())
     write_event_file(test_event)
     
-    -- Warn user if configuration is incomplete
+    -- Final configuration validation and user feedback
     if CONFIG.run_id == "MISSING_RUN_ID" or CONFIG.player_id == "MISSING_PLAYER_ID" then
+        log_error("")
+        log_error("==================================")
         log_error("⚠️  CONFIGURATION INCOMPLETE ⚠️")
-        log_error("run_id: " .. CONFIG.run_id)
-        log_error("player_id: " .. CONFIG.player_id)
-        log_error("Events will fail with 422 errors until config.lua is properly configured!")
-        log_error("Get UUIDs from: " .. CONFIG.api_base_url .. "/admin")
+        log_error("==================================")
+        log_error("🔴 Current run_id: " .. CONFIG.run_id)
+        log_error("🔴 Current player_id: " .. CONFIG.player_id)
+        log_error("")
+        log_error("🚨 CRITICAL: Events will fail with 422 errors!")
+        log_error("")
+        log_error("🔧 TO FIX THIS ISSUE:")
+        log_error("1. Open admin panel: " .. CONFIG.api_base_url .. "/admin")
+        log_error("2. Copy your run_id and player_id UUIDs")
+        log_error("3. Update client/lua/config.lua with proper UUIDs")
+        log_error("4. Reload this script in DeSmuME")
+        log_error("")
+        log_error("Script will continue but events will be rejected by API...")
+        log_error("==================================")
     else
-        log("✅ Configuration complete with valid UUIDs")
-        log("run_id: " .. CONFIG.run_id)
-        log("player_id: " .. CONFIG.player_id)
+        log("")
+        log("✅ ========================================")
+        log("✅      CONFIGURATION SUCCESSFUL      ")
+        log("✅ ========================================")
+        log("🎯 Run ID: " .. CONFIG.run_id)
+        log("🎯 Player ID: " .. CONFIG.player_id)
+        log("🎯 API URL: " .. CONFIG.api_base_url)
+        log("🎯 Output Dir: " .. CONFIG.output_dir)
+        log("✅ Ready to track Pokemon encounters!")
+        log("✅ ========================================")
+        log("")
     end
 end
 

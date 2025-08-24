@@ -69,6 +69,7 @@ class SimpleWatcher:
         self.run_id = None
         self.player_id = None
         self.player_token = None
+        self.config_lua_path = None
         
         # Initialize circuit breaker for API requests
         self.circuit_breaker = CircuitBreaker(
@@ -94,6 +95,156 @@ class SimpleWatcher:
         except CircuitOpenError:
             logger.error(f"Circuit breaker is OPEN - failing fast for {url}")
             raise
+    
+    def read_config_lua(self):
+        """Read config.lua file and extract run_id and player_id.
+        
+        Returns:
+            tuple: (run_id, player_id, config_path) or (None, None, None) if failed
+        """
+        # Try multiple possible paths for config.lua
+        possible_paths = [
+            Path("client/lua/config.lua"),  # From project root
+            Path("../client/lua/config.lua"),  # If running from client/ directory
+            Path("lua/config.lua"),  # If running from client/ directory
+            Path("config.lua"),  # Same directory as watcher
+        ]
+        
+        # Add current script directory path
+        script_dir = Path(__file__).parent
+        possible_paths.append(script_dir / "lua" / "config.lua")
+        possible_paths.append(script_dir.parent / "client" / "lua" / "config.lua")
+        
+        for config_path in possible_paths:
+            try:
+                if config_path.exists():
+                    logger.info(f"🔍 Found config.lua at: {config_path}")
+                    
+                    # Read the Lua config file
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Simple Lua table parsing for our specific format
+                    run_id = None
+                    player_id = None
+                    
+                    # Extract run_id using regex
+                    run_match = re.search(r'run_id\s*=\s*["\']([a-fA-F0-9\-]+)["\']', content)
+                    if run_match:
+                        run_id = run_match.group(1).strip()
+                    
+                    # Extract player_id using regex
+                    player_match = re.search(r'player_id\s*=\s*["\']([a-fA-F0-9\-]+)["\']', content)
+                    if player_match:
+                        player_id = player_match.group(1).strip()
+                    
+                    # Validate extracted UUIDs
+                    if run_id and player_id:
+                        try:
+                            # Validate UUID format
+                            UUID(run_id)
+                            UUID(player_id)
+                            
+                            # Check for placeholder values
+                            if 'REPLACE_WITH' in run_id or 'MISSING_' in run_id:
+                                logger.warning(f"⚠️  config.lua contains placeholder run_id: {run_id}")
+                                continue
+                            if 'REPLACE_WITH' in player_id or 'MISSING_' in player_id:
+                                logger.warning(f"⚠️  config.lua contains placeholder player_id: {player_id}")
+                                continue
+                            
+                            logger.info(f"✅ Successfully loaded config.lua:")
+                            logger.info(f"   📍 Path: {config_path}")
+                            logger.info(f"   🎯 Run ID: {run_id}")
+                            logger.info(f"   👤 Player ID: {player_id}")
+                            
+                            self.config_lua_path = config_path
+                            return run_id, player_id, config_path
+                            
+                        except ValueError as e:
+                            logger.error(f"❌ Invalid UUID format in config.lua: {e}")
+                            continue
+                    else:
+                        logger.warning(f"⚠️  Could not extract run_id or player_id from {config_path}")
+                        continue
+                        
+            except Exception as e:
+                logger.debug(f"Could not read {config_path}: {e}")
+                continue
+        
+        logger.warning("⚠️  No valid config.lua found in any of these locations:")
+        for path in possible_paths:
+            logger.warning(f"   • {path} {'(exists)' if path.exists() else '(not found)'}")
+        
+        return None, None, None
+    
+    def validate_config_in_database(self, run_id, player_id):
+        """Validate that run_id and player_id exist in database and get player token.
+        
+        Returns:
+            str: player_token if validation successful, None if failed
+        """
+        try:
+            logger.info(f"🔍 Validating config UUIDs in database...")
+            
+            # Check if run exists
+            response = self.make_http_request('GET',
+                f"{CONFIG['api_base_url']}/v1/admin/runs",
+                timeout=CONFIG['timeout']
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"❌ Failed to get runs from database: {response.status_code}")
+                return None
+            
+            runs = response.json()
+            run_found = None
+            for run in runs:
+                if run['id'] == run_id:
+                    run_found = run
+                    break
+            
+            if not run_found:
+                logger.error(f"❌ Run ID {run_id} not found in database")
+                return None
+            
+            logger.info(f"✅ Run found: {run_found['name']} ({run_id})")
+            
+            # Check if player exists in this run
+            players_response = self.make_http_request('GET',
+                f"{CONFIG['api_base_url']}/v1/runs/{run_id}/players",
+                timeout=CONFIG['timeout']
+            )
+            
+            if players_response.status_code != 200:
+                logger.error(f"❌ Failed to get players for run: {players_response.status_code}")
+                return None
+            
+            players_data = players_response.json()
+            players = players_data.get('players', [])
+            player_found = None
+            for player in players:
+                if player['id'] == player_id:
+                    player_found = player
+                    break
+            
+            if not player_found:
+                logger.error(f"❌ Player ID {player_id} not found in run {run_id}")
+                return None
+            
+            logger.info(f"✅ Player found: {player_found['name']} ({player_id})")
+            
+            # Since PlayerResponse doesn't include tokens, we need to create a new token
+            # This is a security limitation - tokens are only shown once during creation
+            logger.warning("⚠️  Config validation successful, but no token available")
+            logger.warning("   Player tokens are not stored in PlayerResponse for security")
+            logger.warning("   Will need to create new player or get token another way")
+            
+            return "CONFIG_VALIDATED"  # Special marker indicating validation passed
+            
+        except Exception as e:
+            logger.error(f"❌ Database validation error: {e}")
+            return None
     
     def retry_with_backoff(self, func, max_retries=None, base_delay=1.0, max_delay=60.0, jitter_ratio=0.1):
         """Retry a function with exponential backoff and jitter."""
@@ -136,7 +287,8 @@ class SimpleWatcher:
                         timeout=CONFIG['timeout']
                     )
                     if players_response.status_code == 200:
-                        players = players_response.json()  # API returns list directly
+                        players_data = players_response.json()  # API returns {"players": [...]}
+                        players = players_data.get('players', [])
                         if players and isinstance(players, list):
                             # Regular PlayerResponse doesn't include tokens for security
                             # We'll need to create a new player to get a token
@@ -222,17 +374,61 @@ class SimpleWatcher:
     
     def setup_run_player(self):
         """Setup run and player for event processing."""
-        logger.info("Setting up run and player...")
+        logger.info("🚀 Setting up run and player...")
         
-        # First try to get existing run/player
+        # STEP 1: Try to read config.lua first
+        logger.info("🔄 STEP 1: Attempting to read config.lua...")
+        config_run_id, config_player_id, config_path = self.read_config_lua()
+        
+        if config_run_id and config_player_id:
+            logger.info("✅ Found valid UUIDs in config.lua")
+            
+            # STEP 2: Validate these UUIDs exist in database
+            logger.info("🔄 STEP 2: Validating config UUIDs in database...")
+            validation_result = self.validate_config_in_database(config_run_id, config_player_id)
+            
+            if validation_result == "CONFIG_VALIDATED":
+                # Use the config UUIDs but we still need a token
+                self.run_id = config_run_id
+                self.player_id = config_player_id
+                
+                logger.info("✅ Config UUIDs validated successfully!")
+                logger.info(f"   🎯 Using Run ID: {self.run_id}")
+                logger.info(f"   👤 Using Player ID: {self.player_id}")
+                
+                # For now, we'll need to create a temporary test run to get a token
+                # This is a limitation - tokens are only provided during player creation
+                logger.warning("⚠️  Need to create temporary player for authentication token")
+                logger.warning("   This is a current limitation - tokens aren't stored in database responses")
+                
+                # Try to create a temporary player to get a token
+                # We'll still use the config UUIDs for event processing
+                if self.create_test_run():  # This creates temporary credentials
+                    # Override with config UUIDs for actual event processing
+                    temp_token = self.player_token  # Save the token
+                    self.run_id = config_run_id     # Use config run_id
+                    self.player_id = config_player_id  # Use config player_id
+                    self.player_token = temp_token  # Keep temp token for auth
+                    
+                    logger.info("✅ Successfully configured watcher with config.lua UUIDs")
+                    logger.info(f"   🔑 Using temporary token for authentication")
+                    logger.info(f"   🎯 Events will use run_id: {self.run_id}")
+                    logger.info(f"   👤 Events will use player_id: {self.player_id}")
+                    return True
+        
+        # STEP 3: Fallback to getting existing run/player from admin API
+        logger.info("🔄 STEP 3: Fallback - trying to get existing run/player from admin API...")
         if self.get_admin_info():
+            logger.info("✅ Successfully configured from existing run/player")
             return True
             
-        # If no runs exist, create a test run
+        # STEP 4: Last resort - create a test run
+        logger.info("🔄 STEP 4: Last resort - creating new test run...")
         if self.create_test_run():
+            logger.info("✅ Successfully created test run and player")
             return True
             
-        logger.error("Failed to setup run and player")
+        logger.error("❌ Failed to setup run and player after all attempts")
         return False
     
     def normalize_timestamp(self, timestamp_str):
