@@ -493,7 +493,25 @@ class SimpleWatcher:
 
 def main():
     """Main entry point."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='SoulLink Event Watcher')
+    parser.add_argument('--run-id', help='Run UUID')
+    parser.add_argument('--player-id', help='Player UUID')
+    parser.add_argument('--token', help='Player authentication token')
+    parser.add_argument('--api-url', default='http://127.0.0.1:8000', help='API server URL')
+    parser.add_argument('--watch-dir', help='Directory to watch for events')
+    
+    args = parser.parse_args()
+    
+    # Override config with command-line arguments
+    if args.api_url:
+        CONFIG['api_base_url'] = args.api_url
+    if args.watch_dir:
+        CONFIG['watch_directory'] = args.watch_dir
+    
     # Check if server is running
+    logger.info("Checking server status...")
     try:
         response = requests.get(f"{CONFIG['api_base_url']}/health", timeout=5)
         if response.status_code != 200:
@@ -502,13 +520,25 @@ def main():
             return 1
     except Exception as e:
         logger.error(f"Cannot connect to server: {e}")
-        logger.error("Make sure the SoulLink server is running at http://127.0.0.1:8000")
+        logger.error(f"Make sure the SoulLink server is running at {CONFIG['api_base_url']}")
         return 1
     
     logger.info("✅ Server is running and accessible")
     
     # Start the watcher
     watcher = SimpleWatcher()
+    
+    # Set credentials if provided via command line
+    if args.run_id:
+        watcher.run_id = args.run_id
+        logger.info(f"Using run_id from command line: {args.run_id}")
+    if args.player_id:
+        watcher.player_id = args.player_id
+        logger.info(f"Using player_id from command line: {args.player_id}")
+    if args.token:
+        watcher.player_token = args.token
+        logger.info("Using token from command line")
+    
     success = watcher.run()
     return 0 if success else 1
 
