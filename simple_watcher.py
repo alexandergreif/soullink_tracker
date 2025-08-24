@@ -402,16 +402,13 @@ class SimpleWatcher:
                 logger.warning("   This is a current limitation - tokens aren't stored in database responses")
                 
                 # Try to create a temporary player to get a token
-                # We'll still use the config UUIDs for event processing
+                # Use temporary credentials consistently - no mixing!
                 if self.create_test_run():  # This creates temporary credentials
-                    # Override with config UUIDs for actual event processing
-                    temp_token = self.player_token  # Save the token
-                    self.run_id = config_run_id     # Use config run_id
-                    self.player_id = config_player_id  # Use config player_id
-                    self.player_token = temp_token  # Keep temp token for auth
+                    # Use the temporary credentials consistently - no mixing!
+                    # self.run_id and self.player_id already set by create_test_run()
+                    # self.player_token already set by create_test_run()
                     
-                    logger.info("✅ Successfully configured watcher with config.lua UUIDs")
-                    logger.info(f"   🔑 Using temporary token for authentication")
+                    logger.info("✅ Using temporary credentials consistently")
                     logger.info(f"   🎯 Events will use run_id: {self.run_id}")
                     logger.info(f"   👤 Events will use player_id: {self.player_id}")
                     return True
