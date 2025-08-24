@@ -32,7 +32,7 @@ if errorlevel 1 (
 echo ✅ Server is running
 echo.
 echo Starting event watcher...
-echo This will monitor C:/temp/soullink_events/ for JSON files from Lua script
+echo The watcher will auto-detect your OS and create the appropriate directory
 echo.
 
 REM Start the watcher

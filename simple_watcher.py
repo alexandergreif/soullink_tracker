@@ -90,6 +90,167 @@ class SimpleWatcher:
         logger.info(
             f"Circuit breaker initialized (available: {CIRCUIT_BREAKER_AVAILABLE})"
         )
+    
+    def setup_watch_directory(self):
+        """Create watch directory if it doesn't exist and verify write access."""
+        watch_path = Path(CONFIG["watch_directory"])
+        
+        # Log OS detection info
+        logger.info(f"Operating System: {platform.system()}")
+        logger.info(f"Platform Details: {platform.platform()}")
+        
+        # Try to create directory if it doesn't exist
+        try:
+            watch_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"✅ Watch directory exists: {watch_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to create watch directory: {e}")
+            
+            # Provide OS-specific instructions
+            if platform.system() == "Windows":
+                logger.error("\nTo create the directory manually on Windows:")
+                logger.error(f'  PowerShell: New-Item -ItemType Directory -Force -Path "{watch_path}"')
+                logger.error(f'  CMD: mkdir "{watch_path}"')
+            else:
+                logger.error("\nTo create the directory manually:")
+                logger.error(f'  mkdir -p "{watch_path}"')
+            return False
+        
+        # Test write access
+        test_file = watch_path / f"watcher_test_{os.getpid()}_{int(time.time())}.json"
+        try:
+            test_data = {
+                "type": "test",
+                "message": "Watcher startup test",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "pid": os.getpid(),
+                "platform": platform.system()
+            }
+            
+            with open(test_file, "w") as f:
+                json.dump(test_data, f, indent=2)
+            
+            logger.info(f"✅ Directory is writable - test file created: {test_file.name}")
+            
+            # Clean up test file
+            test_file.unlink()
+            
+        except Exception as e:
+            logger.error(f"❌ Cannot write to watch directory: {e}")
+            logger.error("Please check directory permissions")
+            return False
+        
+        # Create subdirectories for organization
+        subdirs = ["processed", "errors"]
+        for subdir in subdirs:
+            subdir_path = watch_path / subdir
+            try:
+                subdir_path.mkdir(exist_ok=True)
+                logger.debug(f"  Created subdirectory: {subdir}")
+            except Exception as e:
+                logger.warning(f"  Could not create {subdir} subdirectory: {e}")
+        
+        # Also update config.lua if found to use this directory
+        self.update_lua_config_directory(watch_path)
+        
+        return True
+    
+    def update_lua_config_directory(self, watch_path):
+        """Update config.lua to use the correct output directory."""
+        # Try to find config.lua
+        possible_paths = [
+            Path("client/lua/config.lua"),
+            Path("lua/config.lua"),
+            Path("config.lua"),
+        ]
+        
+        config_exists = False
+        for path in possible_paths:
+            if path.exists():
+                self.config_lua_path = path
+                config_exists = True
+                break
+        
+        # If no config.lua exists, create one from template
+        if not config_exists:
+            self.create_default_lua_config(watch_path)
+            return
+        
+        if self.config_lua_path and self.config_lua_path.exists():
+            try:
+                # Read current config
+                with open(self.config_lua_path, "r") as f:
+                    content = f.read()
+                
+                # Update output_dir line
+                import re
+                # Convert path to forward slashes for Lua
+                lua_path = str(watch_path).replace("\\", "/")
+                if not lua_path.endswith("/"):
+                    lua_path += "/"
+                
+                # Update the output_dir line
+                new_content = re.sub(
+                    r'output_dir\s*=\s*["\'][^"^\']*["\']',
+                    f'output_dir = "{lua_path}"',
+                    content
+                )
+                
+                if new_content != content:
+                    # Write updated config
+                    with open(self.config_lua_path, "w") as f:
+                        f.write(new_content)
+                    logger.info(f"✅ Updated {self.config_lua_path} with output_dir: {lua_path}")
+                else:
+                    logger.debug(f"Config.lua already has correct output_dir")
+                    
+            except Exception as e:
+                logger.warning(f"Could not update config.lua: {e}")
+    
+    def create_default_lua_config(self, watch_path):
+        """Create a default config.lua file with auto-detected settings."""
+        config_dir = Path("client/lua")
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "config.lua"
+        
+        # Convert path to forward slashes for Lua
+        lua_path = str(watch_path).replace("\\", "/")
+        if not lua_path.endswith("/"):
+            lua_path += "/"
+        
+        config_content = f"""-- Auto-generated SoulLink Tracker Configuration
+-- Created by watcher at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+return {{
+    -- API server settings
+    api_base_url = "http://127.0.0.1:8000",
+    
+    -- IMPORTANT: Replace these with your actual UUIDs from the admin panel
+    -- Get these from http://127.0.0.1:8000/admin
+    run_id = "{self.run_id or 'REPLACE_WITH_YOUR_RUN_ID'}",
+    player_id = "{self.player_id or 'REPLACE_WITH_YOUR_PLAYER_ID'}",
+    
+    -- Auto-detected output directory for your OS
+    output_dir = "{lua_path}",
+    
+    -- Optional settings
+    poll_interval = 60,  -- Frames between checks (60 = 1 second)
+    debug = true,        -- Enable debug logging
+    max_runtime = 3600,  -- Max runtime in seconds (0 = unlimited)
+    memory_profile = "US" -- ROM version: "US" or "EU"
+}}
+"""
+        
+        try:
+            with open(config_path, "w") as f:
+                f.write(config_content)
+            logger.info(f"✅ Created default config.lua at: {config_path}")
+            logger.info(f"   Output directory: {lua_path}")
+            if not self.run_id:
+                logger.warning("   ⚠️  Remember to update run_id and player_id from the admin panel!")
+            self.config_lua_path = config_path
+        except Exception as e:
+            logger.error(f"Failed to create config.lua: {e}")
 
     def make_http_request(self, method, url, **kwargs):
         """Make HTTP request with circuit breaker protection."""
@@ -801,6 +962,10 @@ class SimpleWatcher:
         logger.info(f"API Server: {CONFIG['api_base_url']}")
         logger.info(f"Watch Directory: {CONFIG['watch_directory']}")
         logger.info(f"Poll Interval: {CONFIG['poll_interval']} seconds")
+        
+        # Verify or create watch directory
+        if not self.setup_watch_directory():
+            return False
 
         # Setup run and player
         if not self.setup_run_player():
