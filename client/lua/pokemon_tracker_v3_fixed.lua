@@ -58,6 +58,23 @@ local function load_config()
                 log("📍 run_id: " .. config.run_id)
                 log("📍 player_id: " .. config.player_id)
                 log("📍 API URL: " .. (config.api_base_url or "default"))
+                
+                -- Debug: Show all loaded config fields
+                log("📊 All config fields:")
+                for key, value in pairs(config) do
+                    log("  " .. key .. " = " .. tostring(value))
+                end
+                
+                -- Ensure critical fields have fallbacks
+                if not config.poll_interval then
+                    log("⚠️  poll_interval missing, setting default to 60")
+                    config.poll_interval = 60
+                end
+                if not config.output_dir then
+                    log("⚠️  output_dir missing, setting default")
+                    config.output_dir = "C:/Users/" .. os.getenv("USERNAME") .. "/AppData/Local/Temp/soullink_events/"
+                end
+                
                 return config
             else
                 log("⚠️  Config file found but contains placeholder values: " .. config_path)
@@ -99,6 +116,13 @@ end
 
 -- Load configuration
 local CONFIG = load_config()
+
+-- Debug: Verify CONFIG table integrity
+log("DEBUG: CONFIG table verification:")
+log("  run_id = " .. (CONFIG.run_id or "NIL"))
+log("  player_id = " .. (CONFIG.player_id or "NIL"))
+log("  poll_interval = " .. (CONFIG.poll_interval and tostring(CONFIG.poll_interval) or "NIL"))
+log("  output_dir = " .. (CONFIG.output_dir or "NIL"))
 
 -- Memory addresses for Pokemon HGSS (Multiple region support)
 local MEMORY_PROFILES = {
@@ -229,7 +253,7 @@ local function get_current_time()
 end
 
 local function create_output_dir()
-    local path = CONFIG.output_dir
+    local path = CONFIG.output_dir or "C:/temp/soullink_events/"
     local success1 = os.execute('if not exist "' .. path .. '" mkdir "' .. path .. '"') -- Windows
     local success2 = os.execute("mkdir -p '" .. path .. "' 2>/dev/null") -- Unix
     log("Created output directory: " .. path)
@@ -454,7 +478,8 @@ local function on_frame()
     game_state.frame_count = game_state.frame_count + 1
     
     -- Run monitoring at specified interval
-    if game_state.frame_count >= CONFIG.poll_interval then
+    local poll_interval = CONFIG.poll_interval or 60
+    if game_state.frame_count >= poll_interval then
         game_state.frame_count = 0
         monitor_game()
     end
@@ -471,8 +496,13 @@ end
 -- Initialization function
 local function initialize()
     log("=== Pokemon SoulLink Tracker V3 (Fixed) ===")
-    log("Output directory: " .. CONFIG.output_dir)
-    log("Poll interval: " .. CONFIG.poll_interval .. " frames")
+    
+    -- Defensive checks for CONFIG values
+    local output_dir = CONFIG.output_dir or "MISSING_OUTPUT_DIR"
+    local poll_interval = CONFIG.poll_interval or 60
+    
+    log("Output directory: " .. output_dir)
+    log("Poll interval: " .. poll_interval .. " frames")
     
     -- Create output directory
     create_output_dir()
