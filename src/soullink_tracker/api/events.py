@@ -3,10 +3,11 @@
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import Union
+from typing import Union, Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request, Query, status
+from pydantic import Discriminator
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -28,10 +29,20 @@ from .schemas import (
     EventEncounter,
     EventCatchResult,
     EventFaint,
+    EventTest,
     EventResponse,
     ProblemDetails,
     EventCatchUpResponse,
 )
+
+# Define discriminated union for event types using Pydantic v2 Discriminator
+EventUnion = Annotated[
+    Union[EventEncounter, EventCatchResult, EventFaint, EventTest],
+    Discriminator('type')
+]
+
+# Alias for cleaner usage in function signatures
+EventType = Union[EventEncounter, EventCatchResult, EventFaint, EventTest]
 
 router = APIRouter(prefix="/v1/events", tags=["events"])
 logger = get_logger('events')
@@ -113,7 +124,7 @@ def _store_idempotency(
     },
 )
 async def process_event(
-    event: Union[EventEncounter, EventCatchResult, EventFaint],
+    event: EventUnion,  # Use discriminated union
     request: Request,
     current_player: Player = Depends(get_current_player),
     db: Session = Depends(get_db),
@@ -272,16 +283,17 @@ def get_events_catchup(
 
 
 async def _broadcast_event_update(
-    event: Union["EncounterEvent", "CatchResultEvent", "FaintEvent"],
+    event: Union["EncounterEvent", "CatchResultEvent", "FaintEvent", "EventTest"],
     sequence_number: int,
 ):
     """Broadcast event update to WebSocket clients with sequence number.
 
     Args:
-        event: Domain event (not API schema event)
+        event: Domain event or EventTest API schema for test events
         sequence_number: Event sequence number for ordering
     """
-    logger.debug(f"Broadcasting {event.event_type} event with sequence {sequence_number}")
+    event_type = getattr(event, 'type', getattr(event, 'event_type', 'unknown'))
+    logger.debug(f"Broadcasting {event_type} event with sequence {sequence_number}")
     try:
         # Import WebSocket message schemas locally to avoid circular imports
         from ..events.schemas import (
@@ -291,7 +303,25 @@ async def _broadcast_event_update(
         )
 
         # Create appropriate WebSocket message based on event type
-        if event.event_type == "encounter":
+        # Check if it's a test event first (API schema object)
+        if hasattr(event, 'type') and event.type == "test":
+            # Test event from API schema
+            # Create a simple message for test events
+            message = {
+                "type": "test",
+                "run_id": str(event.run_id),
+                "player_id": str(event.player_id),
+                "message": getattr(event, 'message', 'Test event'),
+                "event_version": getattr(event, 'event_version', None),
+                "timestamp": event.time.isoformat(),
+            }
+            
+            # For test events, broadcast as raw dict
+            await websocket_manager.broadcast_to_run(
+                run_id=event.run_id, message=message, sequence_number=sequence_number
+            )
+            return
+        elif hasattr(event, 'event_type') and event.event_type == "encounter":
             # Convert enum values to their enum objects for WebSocket message
             from ..core.enums import EncounterMethod, EncounterStatus
 
@@ -331,7 +361,7 @@ async def _broadcast_event_update(
                 status=status_enum,
                 rod_kind=rod_kind_str,
             )
-        elif event.event_type == "catch_result":
+        elif hasattr(event, 'event_type') and event.event_type == "catch_result":
             # For now, keep using encounter_ref format until WebSocket schema is updated
             encounter_ref = {
                 "route_id": getattr(event, "route_id", None),
@@ -351,7 +381,7 @@ async def _broadcast_event_update(
                 encounter_ref=encounter_ref,
                 status=result_str,  # Keep as 'status' for now until schema is updated
             )
-        elif event.event_type == "faint":
+        elif hasattr(event, 'event_type') and event.event_type == "faint":
             message = FaintEventMessage(
                 run_id=event.run_id,
                 player_id=event.player_id,
@@ -369,17 +399,15 @@ async def _broadcast_event_update(
 
     except Exception as e:
         # Log error but don't fail the event processing
-        from ..utils.logging_config import get_logger
-
-        logger = get_logger(__name__)
+        event_type = getattr(event, 'type', getattr(event, 'event_type', 'unknown'))
         logger.error(
-            f"Failed to broadcast WebSocket update for {event.type} event: {e}"
+            f"Failed to broadcast WebSocket update for {event_type} event: {e}"
         )
 
 
 async def _process_event_v3(
     db: Session,
-    event: Union[EventEncounter, EventCatchResult, EventFaint],
+    event: EventUnion,
     applied_rules: list,
 ) -> tuple[UUID, int]:
     """Process an event using v3 event store + projections."""
@@ -420,7 +448,7 @@ async def _process_event_v3(
 
 
 def _convert_to_domain_event(
-    db: Session, event: Union[EventEncounter, EventCatchResult, EventFaint]
+    db: Session, event: EventUnion
 ):
     """Convert API event schema to domain event."""
     if event.type == "encounter":
@@ -504,7 +532,7 @@ def _convert_to_domain_event(
 
 async def _process_event_atomic(
     db: Session,
-    event: Union[EventEncounter, EventCatchResult, EventFaint],
+    event: EventUnion,
     idempotency_key: str,
     request_data: dict,
 ) -> EventResponse:
@@ -579,21 +607,36 @@ async def _process_event_atomic(
         applied_rules: list[str] = []
 
         try:
-            # Process using v3 event store (only supported architecture)
-            event_id, sequence_number = await _process_event_v3(
-                db, event, applied_rules
-            )
+            # Special handling for test events
+            if event.type == "test":
+                logger.info(f"Test event received from player {event.player_id}: {getattr(event, 'message', 'No message')}")
+                
+                # Prepare response for test event
+                response_data: dict = {
+                    "message": "Test event acknowledged",
+                    "event_id": str(uuid4()),
+                    "applied_rules": ["test_event_logged"],
+                }
+                
+                # Optionally broadcast to WebSocket for connectivity confirmation
+                await _broadcast_event_update(event, 0)
+                response_data["applied_rules"].append("websocket_broadcast")
+            else:
+                # Process using v3 event store (only supported architecture)
+                event_id, sequence_number = await _process_event_v3(
+                    db, event, applied_rules
+                )
 
-            # Prepare response
-            response_data: dict = {
-                "message": "Event processed successfully",
-                "event_id": str(event_id) if event_id else None,
-                "applied_rules": applied_rules,
-            }
+                # Prepare response
+                response_data: dict = {
+                    "message": "Event processed successfully",
+                    "event_id": str(event_id) if event_id else None,
+                    "applied_rules": applied_rules,
+                }
 
-            # Add sequence number for encounter events
-            if event.type == "encounter" and sequence_number is not None:
-                response_data["seq"] = sequence_number
+                # Add sequence number for encounter events
+                if event.type == "encounter" and sequence_number is not None:
+                    response_data["seq"] = sequence_number
 
             # Update the idempotency record with the successful response
             idempotency_record.response_json = response_data

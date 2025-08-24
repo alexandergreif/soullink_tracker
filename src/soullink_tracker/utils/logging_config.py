@@ -5,7 +5,6 @@ Provides component-specific loggers with separate log files.
 
 import logging
 import logging.handlers
-import os
 import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -69,7 +68,7 @@ class ComponentLogger:
         with open(session_info_file, 'w') as f:
             f.write(f"Session started: {datetime.now().isoformat()}\n")
             f.write(f"Debug mode: {debug}\n")
-            f.write(f"Config:\n")
+            f.write("Config:\n")
             f.write(f"  Database: {config.database.url}\n")
             f.write(f"  Portable mode: {config.app.is_portable}\n")
             f.write(f"  Development mode: {config.app.is_development}\n")
@@ -172,7 +171,6 @@ class ComponentLogger:
             cls.initialize()
             
         # Handle module paths - extract component from __name__ format
-        original_component = component
         if 'soullink_tracker.' in component:
             # Extract component from module path
             parts = component.split('.')

@@ -20,7 +20,7 @@ from .schemas import (
     SoulLinkUpdateMessage,
 )
 from ..core.enums import EncounterMethod, EncounterStatus
-from ..utils.logging_config import get_logger, log_exception
+from ..utils.logging_config import get_logger
 
 logger = get_logger('websocket')
 

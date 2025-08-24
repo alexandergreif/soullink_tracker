@@ -1,6 +1,5 @@
 """Dependency injection for repository layer."""
 
-from typing import Generator
 from fastapi import Depends
 from sqlalchemy.orm import Session
 

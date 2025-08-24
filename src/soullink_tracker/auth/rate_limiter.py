@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Dict, Tuple, Optional
 from collections import defaultdict, deque
 from dataclasses import dataclass
-import logging
 
 from fastapi import Request, HTTPException, status  # type: ignore
 from ..utils.logging_config import get_logger

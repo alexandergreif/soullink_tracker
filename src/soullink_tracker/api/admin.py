@@ -1,6 +1,5 @@
 """Admin endpoints for v3 event store management and secure token system."""
 
-import logging
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from typing import Dict, Any

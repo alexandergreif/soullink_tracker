@@ -349,10 +349,51 @@ class SimpleWatcher:
         return errors
     
     def process_json_file(self, file_path):
-        """Process a single JSON event file."""
+        """Process a single JSON event file with enhanced edge case handling."""
         try:
-            with open(file_path, 'r') as f:
-                event_data = json.load(f)
+            # Check file size to prevent DoS from huge files
+            file_size = file_path.stat().st_size
+            if file_size > 1024 * 1024:  # 1MB limit
+                logger.error(f"File {file_path.name} too large ({file_size} bytes), skipping")
+                # Move to error directory
+                error_path = file_path.parent / "errors" / file_path.name
+                error_path.parent.mkdir(exist_ok=True)
+                file_path.rename(error_path)
+                return False
+            
+            # Check if file is actually JSON (not binary or corrupted)
+            try:
+                # Read first few bytes to check for binary data
+                with open(file_path, 'rb') as f:
+                    header = f.read(min(100, file_size))
+                    # Check for common binary file signatures
+                    if header.startswith(b'\x00') or b'\xff\xfe' in header or b'\xfe\xff' in header:
+                        logger.error(f"File {file_path.name} appears to be binary, not JSON")
+                        error_path = file_path.parent / "errors" / file_path.name
+                        error_path.parent.mkdir(exist_ok=True)
+                        file_path.rename(error_path)
+                        return False
+            except Exception as e:
+                logger.error(f"Could not read file {file_path.name}: {e}")
+                return False
+            
+            # Read and parse JSON with error handling
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    event_data = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in {file_path.name}: {e}")
+                # Move corrupted file to errors directory
+                error_path = file_path.parent / "errors" / file_path.name
+                error_path.parent.mkdir(exist_ok=True)
+                file_path.rename(error_path)
+                return False
+            except UnicodeDecodeError as e:
+                logger.error(f"Encoding error in {file_path.name}: {e}")
+                error_path = file_path.parent / "errors" / file_path.name
+                error_path.parent.mkdir(exist_ok=True)
+                file_path.rename(error_path)
+                return False
             
             # Add required fields for V3 API
             if 'run_id' not in event_data:

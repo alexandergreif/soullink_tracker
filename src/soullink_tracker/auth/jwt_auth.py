@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, status
 
 from ..config import get_config
-from ..utils.logging_config import get_logger, log_exception
+from ..utils.logging_config import get_logger
 
 logger = get_logger('auth')
 

@@ -5,8 +5,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import and_, or_, func, desc
+from sqlalchemy import and_, func, desc
 
 from .interfaces import (
     RunRepository,

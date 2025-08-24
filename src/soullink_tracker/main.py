@@ -134,11 +134,14 @@ app.include_router(auth.router)
 async def startup_event():
     """Initialize static files and other startup tasks."""
     # Critical security validation - must be done first
-    from .config import validate_startup_security, config_manager
-    import logging
+    from .config import validate_startup_security, config_manager, get_config
     from .utils.logging_config import get_logger
 
     logger = get_logger(__name__)
+    
+    # Initialize configuration singleton early to ensure JWT secret stability
+    get_config()  # Initialize but don't store unused reference
+    logger.info(f"Configuration initialized from {config_manager.config_file}")
 
     # SECURITY: Validate critical security configuration before starting
     try:

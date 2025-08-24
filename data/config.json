@@ -1,0 +1,49 @@
+{
+  "app": {
+    "app_name": "SoulLink Tracker",
+    "version": "2.0.0",
+    "description": "Real-time tracker for 3-player Pokemon SoulLink runs",
+    "web_dir": null,
+    "data_dir": null,
+    "lua_dir": null,
+    "user_data_dir": null,
+    "auto_open_browser": true,
+    "enable_system_tray": true,
+    "enable_cors": true,
+    "feature_v3_eventstore": true,
+    "session_ttl_days": 30,
+    "password_hash_iterations": 120000,
+    "auth_allow_legacy_bearer": true,
+    "jwt_secret_key": "FLWSqy-PDeXBackINOXL5hSaWsk74kbbLtHuYanGDLLXR_WCuv-XpaYFiQX9MnCM3b3osyzCL-Kw_1CpXlY1FA",
+    "jwt_access_token_expires_minutes": 15,
+    "jwt_refresh_token_expires_days": 30,
+    "enable_global_rate_limiting": true,
+    "rate_limit_auth_requests": 10,
+    "rate_limit_api_requests": 60,
+    "rate_limit_websocket_requests": 120,
+    "rate_limit_window_seconds": 60,
+    "rate_limit_failure_penalty_minutes": 15,
+    "rate_limit_max_failures": 5,
+    "rate_limit_enable_user_limits": true,
+    "rate_limit_enable_ip_bypass": true,
+    "rate_limit_admin_bypass_ips": null,
+    "log_level": "INFO",
+    "log_to_file": true,
+    "log_dir": "logs",
+    "is_portable": false,
+    "is_development": false
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "debug": false,
+    "auto_reload": false,
+    "workers": 1
+  },
+  "database": {
+    "url": "sqlite:///soullink_tracker.db",
+    "echo": false,
+    "pool_pre_ping": true,
+    "log_queries": false
+  }
+}

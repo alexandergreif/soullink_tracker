@@ -7,7 +7,6 @@ Always uses the v3 event store for state building in the clean architecture.
 from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import datetime
-import logging
 
 from ..utils.logging_config import get_logger
 
@@ -15,7 +14,7 @@ from .enums import EncounterStatus, EncounterMethod
 
 # Legacy model imports removed in v3-only architecture
 from ..db.models import Blocklist, Encounter, LinkMember  # Still needed for type hints
-from ..domain.events import EncounterEvent, CatchResultEvent
+from ..domain.events import EncounterEvent
 from ..domain.rules import RunState, PlayerRouteState, evaluate_encounter
 from ..repositories.interfaces import RepositoryContainer
 

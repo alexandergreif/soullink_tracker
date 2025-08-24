@@ -3,7 +3,6 @@
 from typing import List, Optional, Dict, Any, Set
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from copy import deepcopy
 
 from .interfaces import (
     RunRepository,
