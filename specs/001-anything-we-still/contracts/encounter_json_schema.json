@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pokemon Encounter Event",
+  "description": "JSON schema for Pokemon encounter data exported by DeSmuME Lua script",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "player_name",
+    "species_id",
+    "level",
+    "current_hp",
+    "max_hp",
+    "encounter_type",
+    "status",
+    "personality_value"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp with timezone (UTC preferred)",
+      "examples": ["2025-10-01T14:30:52Z", "2025-10-01T14:30:52+00:00"]
+    },
+    "player_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50,
+      "description": "Player identifier configured in Lua script",
+      "examples": ["Alice", "Player1"]
+    },
+    "species_id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 493,
+      "description": "National Pokedex number (Gen 4 range)",
+      "examples": [25, 143, 249]
+    },
+    "species_name": {
+      "type": ["string", "null"],
+      "description": "Pokemon species name (optional, can be recalculated from species_id)",
+      "examples": ["Pikachu", "Snorlax", "Lugia", null]
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Pokemon level when encountered",
+      "examples": [5, 12, 50]
+    },
+    "current_hp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current HP stat (can be 0 if fainted during detection)",
+      "examples": [35, 0, 120]
+    },
+    "max_hp": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum HP stat",
+      "examples": [35, 50, 200]
+    },
+    "location_id": {
+      "type": ["integer", "null"],
+      "description": "HGSS map/route ID (optional, null if address unknown)",
+      "examples": [42, 123, null]
+    },
+    "location_name": {
+      "type": ["string", "null"],
+      "description": "Human-readable location name",
+      "examples": ["Route 29", "Ilex Forest", "Unknown", null]
+    },
+    "encounter_type": {
+      "type": "string",
+      "enum": ["wild", "legendary"],
+      "description": "Encounter classification (legendary exempt from Soullink duplicate rule)",
+      "examples": ["wild", "legendary"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["encountered", "caught", "ko", "run"],
+      "description": "Encounter lifecycle status (initial: encountered, updated by user)",
+      "examples": ["encountered"]
+    },
+    "personality_value": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "description": "32-bit Pokemon PID (for uniqueness and shiny detection)",
+      "examples": [3849273841, 123456789]
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "timestamp": "2025-10-01T14:30:52Z",
+      "player_name": "Alice",
+      "species_id": 25,
+      "species_name": "Pikachu",
+      "level": 12,
+      "current_hp": 35,
+      "max_hp": 35,
+      "location_id": null,
+      "location_name": "Unknown",
+      "encounter_type": "wild",
+      "status": "encountered",
+      "personality_value": 3849273841
+    },
+    {
+      "timestamp": "2025-10-01T15:45:10Z",
+      "player_name": "Bob",
+      "species_id": 249,
+      "species_name": "Lugia",
+      "level": 45,
+      "current_hp": 200,
+      "max_hp": 200,
+      "location_id": 142,
+      "location_name": "Whirl Islands",
+      "encounter_type": "legendary",
+      "status": "encountered",
+      "personality_value": 2847561293
+    }
+  ]
+}
