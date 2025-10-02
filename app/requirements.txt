@@ -1,0 +1,19 @@
+# Soullink Tracker - Python Dependencies
+
+# Data validation
+pydantic>=2.0.0
+
+# Testing
+pytest>=7.4.0
+jsonschema>=4.17.0
+
+# File watching
+watchdog>=3.0.0
+
+# Web framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+websockets>=12.0
+
+# Database (bundled with Python, listed for clarity)
+# sqlite3 - built-in

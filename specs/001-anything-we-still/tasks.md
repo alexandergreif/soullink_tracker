@@ -15,30 +15,30 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
 
 ## Phase 3.1: Setup
 
-- [ ] **T001** Create project directory structure
+- [X] **T001** Create project directory structure
   - Create: `emulator/`, `src/models/`, `src/services/`, `tests/contract/`, `tests/integration/`, `tests/unit/`, `data/encounters/`
   - Create: `.gitkeep` files in empty directories
   - **Files**: Repository root structure
   - **Dependencies**: None
 
-- [ ] **T002** Initialize Python project dependencies
+- [X] **T002** Initialize Python project dependencies
   - Create: `requirements.txt` with dependencies (pydantic, pytest, jsonschema, watchdog, fastapi, uvicorn, sqlite3)
   - Run: `pip install -r requirements.txt`
   - **Files**: `requirements.txt`
   - **Dependencies**: T001
 
-- [ ] **T003** [P] Create .gitignore file
+- [X] **T003** [P] Create .gitignore file
   - Ignore: `*.db`, `data/encounters/*.json`, `__pycache__/`, `.pytest_cache/`, `*.pyc`, `venv/`
   - **Files**: `.gitignore`
   - **Dependencies**: T001
 
-- [ ] **T004** [P] Create Lua configuration template
+- [X] **T004** [P] Create Lua configuration template
   - Create: `emulator/config_template.lua` with CONFIG table (player_name, json_output_dir, polling_interval, enable_logging, track_legendaries)
   - Include: Comments explaining each configuration parameter
   - **Files**: `emulator/config_template.lua`
   - **Dependencies**: T001
 
-- [ ] **T004a** [P] Setup Playwright MCP for manual testing automation
+- [X] **T004a** [P] Setup Playwright MCP for manual testing automation
   - Prerequisites: Windows PC with VSCode + Claude Code installed
   - Install: Playwright MCP server (`npm install -g @playwright/mcp-server` or equivalent)
   - Configure: VSCode settings to enable Playwright MCP integration
@@ -47,12 +47,13 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - Verify: Playwright can capture screenshots and interact with Windows applications
   - **Files**: MCP configuration, `tests/debug_logs/` directories
   - **Dependencies**: T001
+  - **Note**: Environment-documented on macOS; full Playwright MCP setup requires Windows environment
 
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
 
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
 
-- [ ] **T005** [P] Contract test for encounter JSON schema validation
+- [X] **T005** [P] Contract test for encounter JSON schema validation
   - Create: `tests/contract/test_encounter_json_schema.py`
   - Test: Load `contracts/encounter_json_schema.json` and validate sample valid/invalid JSON against schema
   - Test cases:
@@ -67,7 +68,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `tests/contract/test_encounter_json_schema.py`
   - **Dependencies**: T002
 
-- [ ] **T006** [P] Integration test for encounter pipeline (JSON → Database)
+- [X] **T006** [P] Integration test for encounter pipeline (JSON → Database)
   - Create: `tests/integration/test_encounter_pipeline.py`
   - Test cases:
     - Single player encounter tracking (JSON file → SQLite insert)
@@ -78,7 +79,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `tests/integration/test_encounter_pipeline.py`
   - **Dependencies**: T002
 
-- [ ] **T007** [P] Unit tests for Pydantic Encounter model validation
+- [X] **T007** [P] Unit tests for Pydantic Encounter model validation
   - Create: `tests/unit/test_encounter_model.py`
   - Test cases:
     - Valid Encounter model instantiation
@@ -89,7 +90,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `tests/unit/test_encounter_model.py`
   - **Dependencies**: T002
 
-- [ ] **T008** [P] Unit tests for Pydantic SoulinkRule model validation
+- [X] **T008** [P] Unit tests for Pydantic SoulinkRule model validation
   - Create: `tests/unit/test_soullink_rule_model.py`
   - Test cases:
     - Valid SoulinkRule model instantiation
@@ -103,7 +104,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
 
 **Python Data Models** (Parallel - different files)
 
-- [ ] **T009** [P] Implement Encounter Pydantic model
+- [X] **T009** [P] Implement Encounter Pydantic model
   - Create: `src/models/encounter.py`
   - Fields: timestamp, player_name, species_id, species_name (optional), level, current_hp, max_hp, location_id (optional), location_name (optional), encounter_type, status, personality_value
   - Validators: species_id [1,493], level [1,100], current_hp ≤ max_hp, encounter_type enum, status enum
@@ -111,7 +112,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Dependencies**: T007 (test must be failing)
   - **Makes Pass**: T007
 
-- [ ] **T010** [P] Implement SoulinkRule Pydantic model
+- [X] **T010** [P] Implement SoulinkRule Pydantic model
   - Create: `src/models/soullink_rule.py`
   - Fields: species_id, caught_by_player, caught_at
   - Validators: species_id [1,493], timestamp format validation
@@ -119,7 +120,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Dependencies**: T008 (test must be failing)
   - **Makes Pass**: T008
 
-- [ ] **T011** [P] Create species reference data (embedded table)
+- [X] **T011** [P] Create species reference data (embedded table)
   - Create: `src/models/species_reference.py`
   - Data: Dictionary mapping species_id [1-493] → species_name (Gen 4 National Dex)
   - Include: Legendary species list (18 species: Articuno, Zapdos, Moltres, Mewtwo, Raikou, Entei, Suicune, Lugia, Ho-Oh, Latias, Latios, Kyogre, Groudon, Rayquaza, Dialga, Palkia, Giratina, Arceus)
@@ -129,7 +130,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
 
 **Lua Memory Reading Script** (Sequential - single file)
 
-- [ ] **T012** Implement Lua memory reading functions
+- [X] **T012** Implement Lua memory reading functions
   - Create: `emulator/hgss_encounter_tracker.lua`
   - Implement:
     - `read_personality_value(pokemon_addr)` - Read PID at offset 0x00
@@ -142,7 +143,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `emulator/hgss_encounter_tracker.lua`
   - **Dependencies**: T004
 
-- [ ] **T013** Implement encounter detection and classification logic
+- [X] **T013** Implement encounter detection and classification logic
   - Add to: `emulator/hgss_encounter_tracker.lua`
   - Implement:
     - `check_enemy_pokemon_exists()` - Check if enemy pointer is non-null
@@ -152,7 +153,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `emulator/hgss_encounter_tracker.lua`
   - **Dependencies**: T012
 
-- [ ] **T014** Implement JSON export functionality
+- [X] **T014** Implement JSON export functionality
   - Add to: `emulator/hgss_encounter_tracker.lua`
   - Implement:
     - `generate_timestamp()` - ISO 8601 format (UTC timezone)
@@ -164,7 +165,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `emulator/hgss_encounter_tracker.lua`
   - **Dependencies**: T013
 
-- [ ] **T015** Implement polling loop and configuration validation
+- [X] **T015** Implement polling loop and configuration validation
   - Add to: `emulator/hgss_encounter_tracker.lua`
   - Implement:
     - `validate_config()` - Check player_name not empty, json_output_dir exists
@@ -175,7 +176,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Files**: `emulator/hgss_encounter_tracker.lua`
   - **Dependencies**: T014
 
-- [ ] **T016** Validate Lua script meets contract test requirements
+- [X] **T016** Validate Lua script meets contract test requirements
   - Run: `pytest tests/contract/test_encounter_json_schema.py`
   - Manual: Generate sample JSON files using Lua script (create test_encounter.json manually if needed)
   - Verify: All contract tests pass
@@ -183,7 +184,7 @@ This tasks.md implements Phase 1 of the Soullink Tracker project: **Lua Memory R
   - **Dependencies**: T015, T005
   - **Makes Pass**: T005
 
-- [ ] **T016a** [P] Create automated testing capture script
+- [X] **T016a** [P] Create automated testing capture script
   - Create: `tests/capture_manual_test.py`
   - Implement:
     - `TestCaptureHandler(FileSystemEventHandler)` - Monitor JSON file creation

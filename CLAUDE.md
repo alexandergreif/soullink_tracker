@@ -22,6 +22,27 @@ DeSmuME (Lua) → JSON Files → Python Watcher → SQLite → FastAPI/WebSocket
 
 **Target Platform**: Windows-only, Pokemon HGSS (USA version), 3 concurrent players
 
+## Directory Structure
+
+The project separates **project management** from **application code**:
+
+```
+Soullink_Tracker_planned/
+├── .claude/              # Claude Code configuration & custom commands
+├── .specify/             # Workflow templates & constitution
+├── specs/                # Feature specifications & planning docs
+├── app/                  # APPLICATION CODE (all runtime code here)
+│   ├── src/              # Source code (models, services, etc.)
+│   ├── tests/            # Unit, integration, contract tests
+│   ├── data/             # Runtime data (encounters, database)
+│   ├── emulator/         # DeSmuME Lua scripts & configs
+│   └── requirements.txt  # Python dependencies
+├── CLAUDE.md             # This file - project guidance
+└── information.md        # Additional project documentation
+```
+
+**Key Principle**: All application code lives in `app/`. Project management artifacts stay at root level.
+
 ## Development Workflow System
 
 This project uses a **specification-driven development workflow** with custom slash commands located in `Soullink_Tracker_planned/.claude/commands/`:
@@ -110,3 +131,4 @@ Seed Offset: 0xAC0
 - **Iterative Development**: Expand features gradually
 - **Manual Fallbacks**: User can override automation
 - **TDD Workflow**: Tests written → approved → fail → implement
+- remember that we have an venv enviroment to start our application

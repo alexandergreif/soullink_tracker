@@ -1,0 +1,25 @@
+# Database files
+*.db
+
+# Encounter JSON queue
+data/encounters/*.json
+
+# Python cache
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
