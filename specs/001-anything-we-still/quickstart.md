@@ -236,20 +236,355 @@ def test_legendary_allows_multiple_catches():
 **Problem**: Encounter not detected at all
 **Solution**: Verify enemy Pokemon pointer is non-null. Battle state detection may need refinement.
 
+---
+
+## T017: Step-by-Step Manual Testing Guide (Enhanced with Automated Capture)
+
+**Objective**: Complete T017 constitutional gate with automated capture script for faster, more reliable testing.
+
+### Prerequisites Checklist
+
+- [ ] **Windows PC** with DeSmuME 0.9.11+ installed
+- [ ] **Pokemon HGSS (USA) ROM** loaded in DeSmuME
+- [ ] **Save file** near tall grass (Route 29, Route 30, or any early route)
+- [ ] **Python 3.10+** with venv activated
+- [ ] **Dependencies installed**: `pip install -r app/requirements.txt`
+- [ ] **Playwright MCP configured** (optional but recommended for screenshots)
+
+### Step 1: Environment Setup
+
+**1.1 Activate Python Virtual Environment**
+```bash
+cd app
+source venv/bin/activate  # macOS/Linux
+# OR
+venv\Scripts\activate  # Windows
+```
+
+**1.2 Verify Dependencies**
+```bash
+pip list | grep -E "watchdog|jsonschema|pydantic"
+# Should show: watchdog, jsonschema, pydantic installed
+```
+
+**1.3 Create Debug Logs Directory**
+```bash
+mkdir -p tests/debug_logs/screenshots
+```
+
+### Step 2: Start Automated Capture Script
+
+**2.1 Launch Capture Script**
+```bash
+cd app
+python tests/capture_manual_test.py --start
+```
+
+**Expected Output**:
+```
+[INFO] Starting automated encounter capture...
+[INFO] Monitoring directory: /path/to/app/data/encounters/
+[INFO] Capture artifacts will be saved to: tests/debug_logs/
+[INFO] Press CTRL+C to stop and generate report
+```
+
+**2.2 Keep Script Running**
+- Leave this terminal open and running
+- Open a **second terminal** for DeSmuME setup
+
+### Step 3: Configure Lua Script
+
+**3.1 Open Lua Script in Editor**
+```bash
+# In second terminal
+nano app/emulator/hgss_encounter_tracker.lua
+# OR open in your preferred editor
+```
+
+**3.2 Edit Configuration Header**
+Find the `CONFIG` table at the top of the file and modify:
+```lua
+local CONFIG = {
+    player_name = "TestPlayer",  -- Change to your name (e.g., "Alice")
+    json_output_dir = "C:/Users/YourName/path/to/app/data/encounters/",  -- ABSOLUTE PATH on Windows
+    polling_interval = 1.0,
+    enable_logging = true,
+    track_legendaries = true
+}
+```
+
+**⚠️ CRITICAL**: Use **absolute path** for `json_output_dir` on Windows!
+
+**3.3 Save and Close**
+- Save the file
+- Verify path exists: Check that `app/data/encounters/` directory exists
+
+### Step 4: Load DeSmuME and Lua Script
+
+**4.1 Launch DeSmuME**
+- Open DeSmuME emulator
+- Load Pokemon Heart Gold or Soul Silver ROM
+- Load save file (or start new game, play to Route 29)
+
+**4.2 Load Lua Script**
+1. Go to **Tools** → **Lua Scripting** → **New Lua Script Window**
+2. Click **Browse** and navigate to `app/emulator/hgss_encounter_tracker.lua`
+3. Click **Open** to load the script
+
+**4.3 Verify Script Loaded Successfully**
+Check DeSmuME Lua console output:
+```
+[INFO] Encounter tracker initialized for player: TestPlayer
+[INFO] Monitoring enemy Pokemon at memory address: 0x0211186C
+[INFO] Polling every 1.0 seconds...
+```
+
+### Step 5: Trigger Wild Encounters
+
+**5.1 Walk in Tall Grass**
+- Move your character into tall grass (Route 29, Route 30, etc.)
+- Wait for wild Pokemon battle to start
+
+**5.2 Observe Real-Time Feedback**
+
+**In DeSmuME Console**:
+```
+[INFO] Wild encounter detected: Species ID 19 (Rattata), Level 3
+[INFO] Exported encounter to: C:/Users/.../encounter_20251002_143052_TestPlayer.json
+```
+
+**In Python Capture Script Terminal**:
+```
+[INFO] New file detected: encounter_20251002_143052_TestPlayer.json
+[INFO] Schema validation: PASSED ✅
+[INFO] Species: Rattata (ID: 19), Level: 3, HP: 12/12
+[INFO] Latency: 1.2 seconds
+```
+
+**5.3 Complete Encounter**
+- Press "Run" to flee from battle
+- Trigger next encounter
+
+**5.4 Repeat 10+ Times**
+- Walk in grass to trigger 10+ wild encounters
+- Capture script automatically records each one
+- Monitor for any errors or validation failures
+
+### Step 6: Manual Verification Checks
+
+**6.1 Check In-Game vs. Captured Data**
+For at least 3 encounters, manually verify:
+- [ ] Species name matches what appears in game
+- [ ] Level matches in-game display
+- [ ] HP values match in-game stats
+
+**6.2 Monitor DeSmuME Performance**
+- [ ] No lag or frame drops during encounters
+- [ ] Emulator maintains 60 FPS
+- [ ] No Lua error messages in console
+
+**6.3 Check JSON File Creation**
+```bash
+# In third terminal (or after testing)
+ls app/data/encounters/
+# Should show: encounter_YYYYMMDD_HHMMSS_TestPlayer.json files
+```
+
+### Step 7: Stop Capture and Generate Report
+
+**7.1 Stop Capture Script**
+- Return to terminal running `capture_manual_test.py`
+- Press **CTRL+C**
+
+**Expected Output**:
+```
+[INFO] Stopping capture...
+[INFO] Generating capture report...
+[INFO] Report saved to: tests/debug_logs/capture_report.json
+[INFO] Total encounters captured: 12
+[INFO] Valid encounters: 12
+[INFO] Invalid encounters: 0
+[INFO] Average latency: 1.3 seconds
+```
+
+**7.2 Copy DeSmuME Console Output**
+1. In DeSmuME Lua console, select all text (CTRL+A)
+2. Copy (CTRL+C)
+3. Save to file:
+```bash
+# Paste into file
+nano app/tests/debug_logs/lua_console.txt
+# Paste and save
+```
+
+### Step 8: Review Generated Artifacts
+
+**8.1 Check Capture Report**
+```bash
+cat app/tests/debug_logs/capture_report.json
+```
+
+**Expected Structure**:
+```json
+{
+  "test_session": {
+    "start_time": "2025-10-02T14:30:00Z",
+    "end_time": "2025-10-02T14:45:00Z",
+    "total_encounters": 12,
+    "valid_encounters": 12,
+    "invalid_encounters": 0,
+    "average_latency": 1.3
+  },
+  "encounters": [
+    {
+      "timestamp": "2025-10-02T14:30:52Z",
+      "species_id": 19,
+      "species_name": "Rattata",
+      "level": 3,
+      "validation_result": "PASSED",
+      "latency_seconds": 1.2,
+      "errors": []
+    },
+    ...
+  ]
+}
+```
+
+**8.2 Check Screenshots (if Playwright enabled)**
+```bash
+ls app/tests/debug_logs/screenshots/
+# Should show: encounter_001.png, encounter_002.png, etc.
+```
+
+### Step 9: Validate Success Criteria
+
+Check all criteria are met:
+
+- [ ] **No DeSmuME lag or frame drops** during testing
+- [ ] **No Lua script errors** in `lua_console.txt`
+- [ ] **All JSON files valid** per schema (check capture_report.json)
+- [ ] **Species ID, level, HP match** in-game Pokemon (manual verification)
+- [ ] **Average latency < 2 seconds** (check capture_report.json)
+- [ ] **10+ successful encounters** with `valid=true`
+- [ ] **No validation errors** in capture_report.json
+
+### Step 10: Document Results
+
+**10.1 Create Test Results Document**
+```bash
+nano app/tests/manual_testing_results.md
+```
+
+**10.2 Template**:
+```markdown
+# T017 Manual Testing Results
+
+## Test Session Information
+- **Date**: 2025-10-02
+- **Tester**: [Your Name]
+- **Platform**: Windows 10 / DeSmuME 0.9.11
+- **ROM**: Pokemon Heart Gold (USA)
+
+## Test Results Summary
+- Total Encounters: 12
+- Valid Encounters: 12
+- Invalid Encounters: 0
+- Average Latency: 1.3 seconds
+- Emulator Performance: No lag, 60 FPS maintained
+
+## Success Criteria
+- [x] No DeSmuME lag or frame drops
+- [x] No Lua script errors
+- [x] All JSON files pass schema validation
+- [x] Species ID, level, HP match in-game
+- [x] Average latency < 2 seconds
+- [x] 10+ encounters captured
+
+## Issues Encountered
+- None / [List any issues]
+
+## Sample Encounters Verified
+1. Rattata (ID: 19) - Level 3 - HP: 12/12 ✅
+2. Pidgey (ID: 16) - Level 4 - HP: 15/15 ✅
+3. Sentret (ID: 161) - Level 2 - HP: 10/10 ✅
+
+## Conclusion
+✅ T017 PASSED - Ready to proceed to T018
+```
+
+**10.3 Save and Commit**
+
+### Step 11: AI-Assisted Debugging (If Issues Found)
+
+**If you encounter validation errors or unexpected behavior:**
+
+**11.1 Share Capture Report with Claude**
+```bash
+# Copy contents of capture_report.json
+cat app/tests/debug_logs/capture_report.json
+```
+
+**11.2 Ask Claude to Analyze**
+- Paste capture_report.json contents
+- Ask: "Analyze this capture report for errors in T017 testing"
+- Claude will identify:
+  - Invalid species IDs (decryption failures)
+  - HP constraint violations
+  - Schema validation errors
+  - Performance issues
+
+**11.3 Implement Fixes**
+- Claude suggests fixes to `hgss_encounter_tracker.lua`
+- Apply fixes and re-run test
+
+### Troubleshooting Common Issues
+
+**Issue**: Capture script not detecting JSON files
+**Solution**:
+```bash
+# Verify json_output_dir matches in both places:
+# 1. Lua script CONFIG.json_output_dir
+# 2. Capture script monitoring path
+# Use absolute paths on Windows!
+```
+
+**Issue**: Schema validation failures
+**Solution**:
+```bash
+# Check capture_report.json for specific errors
+# Common issues:
+# - species_id out of range [1-493]
+# - current_hp > max_hp
+# - Missing required fields
+```
+
+**Issue**: Latency > 2 seconds
+**Solution**:
+- Check CONFIG.polling_interval is set to 1.0
+- Verify no other programs hogging CPU
+- Close unnecessary background applications
+
+**Issue**: Lua script crashes on encounter
+**Solution**:
+- Check DeSmuME console for error messages
+- Verify ROM is USA version of HGSS
+- Check memory addresses match ROM version
+
 ### Next Steps
 
 After validating Phase 1 (Lua Memory Reading):
-1. ✅ Proceed to Phase 2: JSON Queue System specification
+1. ✅ T017 PASSED → Proceed to T018 (Database initialization)
 2. ✅ Proceed to Phase 3: Python File Watcher implementation
 3. ✅ Validate database insertion and duplicate detection
 4. ✅ Proceed to Phase 4: SQLite schema creation
 5. ✅ Proceed to Phase 5: FastAPI backend with WebSocket
 6. ✅ Proceed to Phase 6: Web dashboard frontend
 
-**Constitutional Gate**: Do NOT proceed to Phase 2 until Lua memory reading is validated with real ROM encounters.
+**Constitutional Gate**: Do NOT proceed to Phase 2 until T017 is validated with real ROM encounters and results documented.
 
 ---
 
-**Test Status**: ⏳ PENDING IMPLEMENTATION
-**Manual Testing Required**: YES (DeSmuME + HGSS ROM)
-**Automated Tests Created**: NO (will be written in Phase 2 via TDD workflow)
+**Test Status**: ⏳ PENDING EXECUTION
+**Manual Testing Required**: YES (DeSmuME + HGSS ROM on Windows)
+**Automated Capture Script**: Created in T016a
+**Documentation Required**: `tests/manual_testing_results.md`
